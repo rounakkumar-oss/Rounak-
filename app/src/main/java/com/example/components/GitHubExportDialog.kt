@@ -6,7 +6,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -27,6 +26,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudUpload
@@ -41,8 +41,9 @@ import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -87,7 +88,188 @@ import com.example.ui.theme.ForgeTextSecondary
 import com.example.ui.theme.ForgeVioletAccent
 import com.example.ui.theme.ForgeVioletLight
 import com.example.ui.theme.ForgeWarningAmber
+import java.util.Locale
 import kotlinx.coroutines.launch
+
+/**
+ * Prominent top-of-screen card that lets users immediately:
+ * 1. Download the `.APK` file (`WorldForgeAI-v0.1.0.apk`) straight to their phone in 1 tap.
+ * 2. Open the GitHub Direct APK Upload & Download Hub to push the `.APK` to GitHub Releases and download it from GitHub.
+ * 3. Download the complete `.ZIP` repository bundle straight to their phone.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun DirectApkAndGitHubBannerCard(
+    activeProject: ForgeProject?,
+    allProjects: List<ForgeProject>,
+    onOpenGitHubApkHub: () -> Unit,
+    onStatusMessage: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val apkSizeLabel = remember(context) { GitHubExportService.getInstalledApkSizeLabel(context) }
+    val targetSlug = remember(activeProject) {
+        if (activeProject != null) GitHubExportService.sanitizeRepoSlug(activeProject.name)
+        else "world-forge-ai"
+    }
+
+    val directApkLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/vnd.android.package-archive")
+    ) { uri ->
+        if (uri != null) {
+            val result = GitHubExportService.writeInstalledApkToUri(context, uri)
+            result.onSuccess { bytes ->
+                val mb = String.format(Locale.US, "%.1f MB", bytes.toDouble() / (1024.0 * 1024.0))
+                onStatusMessage("APK Downloaded! Saved ${targetSlug}-v0.1.0.apk ($mb) directly to your phone.")
+            }.onFailure { err ->
+                onStatusMessage("Failed to save APK: ${err.localizedMessage}")
+            }
+        }
+    }
+
+    val directZipLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/zip")
+    ) { uri ->
+        if (uri != null) {
+            val result = GitHubExportService.writeProjectZipToUri(context, uri, activeProject, allProjects)
+            result.onSuccess {
+                onStatusMessage("ZIP Downloaded! Saved ${targetSlug}.zip repository bundle to your phone.")
+            }.onFailure { err ->
+                onStatusMessage("Failed to save ZIP: ${err.localizedMessage}")
+            }
+        }
+    }
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("direct_apk_github_banner_card"),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = ForgeSurfaceElevated),
+        border = BorderStroke(1.5.dp, ForgeSuccessGreen.copy(alpha = 0.75f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(ForgeSuccessGreen.copy(alpha = 0.18f))
+                            .border(1.dp, ForgeSuccessGreen.copy(alpha = 0.55f), RoundedCornerShape(10.dp)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Android,
+                            contentDescription = "Direct APK & GitHub Download",
+                            tint = ForgeSuccessGreen,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = "Direct Android .APK & GitHub Download Center",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = ForgeTextPrimary
+                        )
+                        Text(
+                            text = "1-Click Direct Phone .APK Download ($apkSizeLabel) · Upload & Download .APK on GitHub Releases",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ForgeTextSecondary
+                        )
+                    }
+                }
+            }
+
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Button(
+                    onClick = {
+                        directApkLauncher.launch("${targetSlug}-v0.1.0.apk")
+                    },
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ForgeSuccessGreen,
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier.testTag("banner_direct_apk_download_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Android,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Download .APK Directly ($apkSizeLabel)",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Button(
+                    onClick = onOpenGitHubApkHub,
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ForgeElectricBlue,
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier.testTag("banner_github_apk_hub_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CloudUpload,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "GitHub pe APK Upload / Download",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        directZipLauncher.launch("${targetSlug}.zip")
+                    },
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, ForgeBlueLight.copy(alpha = 0.6f)),
+                    modifier = Modifier.testTag("banner_direct_zip_download_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.FolderZip,
+                        contentDescription = null,
+                        tint = ForgeBlueLight,
+                        modifier = Modifier.size(17.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "Download .ZIP Bundle",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = ForgeTextPrimary
+                    )
+                }
+            }
+        }
+    }
+}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -99,15 +281,17 @@ fun GitHubExportDialog(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val apkSizeLabel = remember(context) { GitHubExportService.getInstalledApkSizeLabel(context) }
 
     val targetSlug = remember(project) {
         if (project != null) GitHubExportService.sanitizeRepoSlug(project.name)
-        else "world-forge-ai-workspace"
+        else "world-forge-ai-game"
     }
 
     var repoNameInput by rememberSaveable(targetSlug) { mutableStateOf(targetSlug) }
     var githubTokenInput by rememberSaveable { mutableStateOf("") }
     var createAsPublicRepo by rememberSaveable { mutableStateOf(true) }
+    var uploadApkToGitHubRelease by rememberSaveable { mutableStateOf(true) }
     var isPushingToGitHub by remember { mutableStateOf(false) }
     var pushError by remember { mutableStateOf<String?>(null) }
     var pushSuccessResult by remember { mutableStateOf<GitHubPushResult?>(null) }
@@ -136,7 +320,22 @@ fun GitHubExportDialog(
         }
     }
 
-    // 1. Direct .ZIP Archive Download to Device Storage (No GitHub login needed, zero 404 risk)
+    // 0. Direct Android .APK Download to Phone Storage (Works 100% offline/online, no login needed)
+    val downloadApkLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/vnd.android.package-archive")
+    ) { uri ->
+        if (uri != null) {
+            val res = GitHubExportService.writeInstalledApkToUri(context, uri)
+            res.onSuccess { bytes ->
+                val mb = String.format(Locale.US, "%.1f MB", bytes.toDouble() / (1024.0 * 1024.0))
+                onExportStatusMessage("Saved ${targetSlug}-v0.1.0.apk ($mb) directly to your phone!")
+            }.onFailure { err ->
+                onExportStatusMessage("Failed to save APK: ${err.localizedMessage}")
+            }
+        }
+    }
+
+    // 1. Direct .ZIP Archive Download to Device Storage
     val downloadZipLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/zip")
     ) { uri ->
@@ -185,7 +384,7 @@ fun GitHubExportDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.95f)
-                .widthIn(max = 660.dp)
+                .widthIn(max = 680.dp)
                 .clip(RoundedCornerShape(18.dp))
                 .border(1.dp, ForgeCardBorder, RoundedCornerShape(18.dp))
                 .testTag("github_export_dialog"),
@@ -211,30 +410,30 @@ fun GitHubExportDialog(
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(42.dp)
+                                .size(44.dp)
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(ForgeElectricBlue.copy(alpha = 0.18f))
-                                .border(1.dp, ForgeElectricBlue.copy(alpha = 0.45f), RoundedCornerShape(10.dp)),
+                                .background(ForgeSuccessGreen.copy(alpha = 0.18f))
+                                .border(1.dp, ForgeSuccessGreen.copy(alpha = 0.5f), RoundedCornerShape(10.dp)),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Download,
+                                imageVector = Icons.Default.Android,
                                 contentDescription = null,
-                                tint = ForgeBlueLight,
-                                modifier = Modifier.size(22.dp)
+                                tint = ForgeSuccessGreen,
+                                modifier = Modifier.size(24.dp)
                             )
                         }
                         Column {
                             Text(
-                                text = "GitHub Direct Push & ZIP Download",
+                                text = "Direct .APK & GitHub Download Hub",
                                 style = MaterialTheme.typography.headlineMedium,
                                 color = ForgeTextPrimary
                             )
                             Text(
                                 text = if (project != null) {
-                                    "Project: ${project.name} ($targetSlug)"
+                                    "Project: ${project.name} ($targetSlug) · APK ($apkSizeLabel)"
                                 } else {
-                                    "Full Workspace Bundle (${allProjects.size} project(s))"
+                                    "World Forge AI APK ($apkSizeLabel) & Full Workspace Bundle"
                                 },
                                 style = MaterialTheme.typography.bodySmall,
                                 color = ForgeTextSecondary
@@ -253,47 +452,11 @@ fun GitHubExportDialog(
                     }
                 }
 
-                // Why GitHub 404 Happens & How This Solves It Banner
-                Surface(
-                    color = ForgeWarningAmber.copy(alpha = 0.12f),
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, ForgeWarningAmber.copy(alpha = 0.45f))
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.Top,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = null,
-                            tint = ForgeWarningAmber,
-                            modifier = Modifier
-                                .padding(top = 2.dp)
-                                .size(18.dp)
-                        )
-                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                            Text(
-                                text = "Why did GitHub show '404 — Need to sign in?'",
-                                style = MaterialTheme.typography.titleSmall,
-                                color = ForgeTextPrimary
-                            )
-                            Text(
-                                text = "GitHub shows a 404 page when a repository is Private (and your phone browser isn't signed into GitHub) or when the repository hasn't been created yet. Use Option 1 below to download the .ZIP directly to your phone without GitHub login, or Option 2 to auto-create a Public GitHub repo with 1 tap!",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = ForgeTextSecondary
-                            )
-                        }
-                    }
-                }
-
-                // OPTION 1: Instant Offline .ZIP & File Download (Works 100% without GitHub Login)
+                // OPTION 1: Direct 1-Click Android .APK & .ZIP Download to Phone
                 Surface(
                     color = ForgeSurfaceElevated,
                     shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.5.dp, ForgeSuccessGreen.copy(alpha = 0.6f))
+                    border = BorderStroke(1.5.dp, ForgeSuccessGreen.copy(alpha = 0.75f))
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
@@ -304,19 +467,20 @@ fun GitHubExportDialog(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.FolderZip,
+                                imageVector = Icons.Default.Android,
                                 contentDescription = null,
                                 tint = ForgeSuccessGreen,
-                                modifier = Modifier.size(20.dp)
+                                modifier = Modifier.size(22.dp)
                             )
                             Text(
-                                text = "Option 1: Direct Phone .ZIP Download (No Login Needed)",
+                                text = "Option 1: Direct .APK & .ZIP Phone Download (Bina Login Ke)",
                                 style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
                                 color = ForgeTextPrimary
                             )
                         }
                         Text(
-                            text = "Save the complete GitHub repository structure (README.md, worldforge.project.json, .gitignore, and scenes/main_world.scene.json) directly into your phone's Downloads folder as a .ZIP file.",
+                            text = "Seedha apne phone ke Downloads folder me installable Android .APK (${GitHubExportService.DEFAULT_APK_FILENAME}) ya poora GitHub .ZIP project bundle save karein — isme kabhi 404 error nahi aayega:",
                             style = MaterialTheme.typography.bodySmall,
                             color = ForgeTextSecondary
                         )
@@ -327,11 +491,35 @@ fun GitHubExportDialog(
                         ) {
                             Button(
                                 onClick = {
-                                    downloadZipLauncher.launch("${targetSlug}.zip")
+                                    downloadApkLauncher.launch("${targetSlug}-v0.1.0.apk")
                                 },
                                 shape = RoundedCornerShape(9.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = ForgeSuccessGreen,
+                                    contentColor = Color.White
+                                ),
+                                modifier = Modifier.testTag("download_direct_apk_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Android,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Download Android .APK ($apkSizeLabel)",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Button(
+                                onClick = {
+                                    downloadZipLauncher.launch("${targetSlug}.zip")
+                                },
+                                shape = RoundedCornerShape(9.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = ForgeElectricBlue,
                                     contentColor = Color.White
                                 ),
                                 modifier = Modifier.testTag("download_project_zip_button")
@@ -408,11 +596,11 @@ fun GitHubExportDialog(
                     }
                 }
 
-                // OPTION 2: 1-Click Direct GitHub Repository Creation & Push (via GitHub REST API)
+                // OPTION 2: Upload .APK & Project to GitHub Releases & Get Direct GitHub .APK Link
                 Surface(
                     color = ForgeSurfaceElevated,
                     shape = RoundedCornerShape(14.dp),
-                    border = BorderStroke(1.dp, ForgeElectricBlue.copy(alpha = 0.55f))
+                    border = BorderStroke(1.5.dp, ForgeElectricBlue.copy(alpha = 0.65f))
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
@@ -429,14 +617,15 @@ fun GitHubExportDialog(
                                 modifier = Modifier.size(20.dp)
                             )
                             Text(
-                                text = "Option 2: Auto-Create & Push to GitHub (No 404)",
+                                text = "Option 2: GitHub pe Directly .APK Release Upload & Download",
                                 style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
                                 color = ForgeTextPrimary
                             )
                         }
 
                         Text(
-                            text = "Creates the repository directly on your GitHub account as PUBLIC by default so its URL and .ZIP download link work immediately in any browser without 404 errors.",
+                            text = "Apna GitHub Token daal kar button dabayein — yeh aapke GitHub par PUBLIC repository banayega aur uske Releases me asli Android .APK ($apkSizeLabel) upload kar dega, jisse aap GitHub se seedha .APK download kar sakenge (No 404):",
                             style = MaterialTheme.typography.bodySmall,
                             color = ForgeTextSecondary
                         )
@@ -444,7 +633,7 @@ fun GitHubExportDialog(
                         OutlinedTextField(
                             value = repoNameInput,
                             onValueChange = { repoNameInput = it },
-                            label = { Text("Repository Name") },
+                            label = { Text("GitHub Repository Name") },
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = ForgeElectricBlue,
@@ -468,7 +657,7 @@ fun GitHubExportDialog(
                                     githubTokenInput = it
                                     if (pushError != null) pushError = null
                                 },
-                                label = { Text("GitHub Personal Access Token (ghp_...)") },
+                                label = { Text("GitHub Token (ghp_...)") },
                                 singleLine = true,
                                 visualTransformation = PasswordVisualTransformation(),
                                 colors = OutlinedTextFieldDefaults.colors(
@@ -512,16 +701,48 @@ fun GitHubExportDialog(
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.LockOpen,
+                                    imageVector = Icons.Default.Android,
                                     contentDescription = null,
                                     tint = ForgeSuccessGreen,
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Text(
+                                    text = "Upload Android .APK ($apkSizeLabel) to GitHub Releases",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = ForgeTextPrimary
+                                )
+                            }
+                            Switch(
+                                checked = uploadApkToGitHubRelease,
+                                onCheckedChange = { uploadApkToGitHubRelease = it },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = Color.White,
+                                    checkedTrackColor = ForgeSuccessGreen
+                                )
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.LockOpen,
+                                    contentDescription = null,
+                                    tint = ForgeBlueLight,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Text(
                                     text = if (createAsPublicRepo) {
-                                        "Public Repository (Recommended — avoids 404 without sign-in)"
+                                        "Public Repository (Recommended — No 404 Error)"
                                     } else {
-                                        "Private Repository (Requires GitHub sign-in to view)"
+                                        "Private Repository (Requires GitHub Sign-In)"
                                     },
                                     style = MaterialTheme.typography.bodySmall,
                                     color = ForgeTextSecondary
@@ -532,7 +753,7 @@ fun GitHubExportDialog(
                                 onCheckedChange = { createAsPublicRepo = it },
                                 colors = SwitchDefaults.colors(
                                     checkedThumbColor = Color.White,
-                                    checkedTrackColor = ForgeSuccessGreen
+                                    checkedTrackColor = ForgeElectricBlue
                                 )
                             )
                         }
@@ -557,7 +778,7 @@ fun GitHubExportDialog(
                             Surface(
                                 color = ForgeSuccessGreen.copy(alpha = 0.14f),
                                 shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(1.dp, ForgeSuccessGreen.copy(alpha = 0.5f))
+                                border = BorderStroke(1.5.dp, ForgeSuccessGreen.copy(alpha = 0.7f))
                             ) {
                                 Column(
                                     modifier = Modifier
@@ -576,20 +797,67 @@ fun GitHubExportDialog(
                                             modifier = Modifier.size(18.dp)
                                         )
                                         Text(
-                                            text = "Live on GitHub: ${result.repoFullName}",
+                                            text = "GitHub Repo & APK Live: ${result.repoFullName}",
                                             style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
                                             color = ForgeSuccessGreen
                                         )
                                     }
+
                                     FlowRow(
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
+                                        if (!result.apkDownloadUrl.isNullOrBlank()) {
+                                            Button(
+                                                onClick = {
+                                                    GitHubExportService.openBrowserUrl(context, result.apkDownloadUrl)
+                                                },
+                                                colors = ButtonDefaults.buttonColors(containerColor = ForgeSuccessGreen),
+                                                shape = RoundedCornerShape(8.dp),
+                                                modifier = Modifier.testTag("download_uploaded_github_apk_button")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Android,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "Download .APK from GitHub",
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+
+                                            OutlinedButton(
+                                                onClick = {
+                                                    GitHubExportService.copyToClipboard(
+                                                        context = context,
+                                                        label = "GitHub Direct APK Link",
+                                                        text = result.apkDownloadUrl
+                                                    )
+                                                    onExportStatusMessage("Copied GitHub Direct APK Download link!")
+                                                },
+                                                border = BorderStroke(1.dp, ForgeSuccessGreen),
+                                                shape = RoundedCornerShape(8.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.ContentCopy,
+                                                    contentDescription = null,
+                                                    tint = ForgeSuccessGreen,
+                                                    modifier = Modifier.size(15.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Copy APK Link", color = ForgeTextPrimary)
+                                            }
+                                        }
+
                                         Button(
                                             onClick = {
                                                 GitHubExportService.openBrowserUrl(context, result.zipDownloadUrl)
                                             },
-                                            colors = ButtonDefaults.buttonColors(containerColor = ForgeSuccessGreen),
+                                            colors = ButtonDefaults.buttonColors(containerColor = ForgeElectricBlue),
                                             shape = RoundedCornerShape(8.dp)
                                         ) {
                                             Icon(
@@ -600,9 +868,10 @@ fun GitHubExportDialog(
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Text("Download GitHub main.zip", color = Color.White)
                                         }
+
                                         OutlinedButton(
                                             onClick = {
-                                                GitHubExportService.openBrowserUrl(context, result.repoHtmlUrl)
+                                                GitHubExportService.openBrowserUrl(context, result.releasesPageUrl)
                                             },
                                             border = BorderStroke(1.dp, ForgeSuccessGreen),
                                             shape = RoundedCornerShape(8.dp)
@@ -614,7 +883,7 @@ fun GitHubExportDialog(
                                                 modifier = Modifier.size(15.dp)
                                             )
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Open Repo on GitHub", color = ForgeTextPrimary)
+                                            Text("Open GitHub Releases", color = ForgeTextPrimary)
                                         }
                                     }
                                 }
@@ -632,10 +901,12 @@ fun GitHubExportDialog(
                                     isPushingToGitHub = true
                                     scope.launch {
                                         val res = GitHubExportService.pushProjectDirectlyToGitHubApi(
+                                            context = context,
                                             personalAccessToken = githubTokenInput,
                                             repoName = repoNameInput,
                                             description = project?.description ?: "WORLD FORGE AI Game Project",
                                             isPrivate = !createAsPublicRepo,
+                                            uploadApkRelease = uploadApkToGitHubRelease,
                                             project = project,
                                             allProjects = allProjects
                                         )
@@ -647,7 +918,13 @@ fun GitHubExportDialog(
                                                 existingGithubUsername = owner
                                                 GitHubExportService.saveGitHubUsername(context, owner)
                                             }
-                                            onExportStatusMessage("Successfully created & pushed ${pushed.repoFullName} on GitHub!")
+                                            onExportStatusMessage(
+                                                if (pushed.apkDownloadUrl != null) {
+                                                    "APK & Repo uploaded to GitHub (${pushed.repoFullName})! Tap 'Download .APK from GitHub'."
+                                                } else {
+                                                    "Successfully created & pushed ${pushed.repoFullName} on GitHub!"
+                                                }
+                                            )
                                         }.onFailure { err ->
                                             pushError = err.localizedMessage ?: "Failed to push to GitHub."
                                         }
@@ -668,7 +945,7 @@ fun GitHubExportDialog(
                                         strokeWidth = 2.dp
                                     )
                                     Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Creating Repo on GitHub...")
+                                    Text("Uploading Repo & .APK to GitHub...")
                                 } else {
                                     Icon(
                                         imageVector = Icons.Default.CloudUpload,
@@ -676,7 +953,14 @@ fun GitHubExportDialog(
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Create & Push Repo via API", fontWeight = FontWeight.Bold)
+                                    Text(
+                                        text = if (uploadApkToGitHubRelease) {
+                                            "Upload .APK & Repo to GitHub Now"
+                                        } else {
+                                            "Create & Push Repo to GitHub"
+                                        },
+                                        fontWeight = FontWeight.Bold
+                                    )
                                 }
                             }
 
@@ -707,7 +991,7 @@ fun GitHubExportDialog(
                     }
                 }
 
-                // OPTION 3: Direct ZIP Download from an Existing Public GitHub Repo
+                // OPTION 3: Direct APK & ZIP Download from an Existing Public GitHub Repo
                 Surface(
                     color = ForgeSurfaceElevated,
                     shape = RoundedCornerShape(14.dp),
@@ -728,13 +1012,13 @@ fun GitHubExportDialog(
                                 modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = "Option 3: Download ZIP from Existing Public GitHub Repo",
+                                text = "Option 3: Existing GitHub Repo se APK / ZIP Download",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = ForgeTextPrimary
                             )
                         }
                         Text(
-                            text = "Already have a public repository on GitHub? Enter your GitHub username and repo name to download its branch .ZIP directly (make sure the repo is set to Public in GitHub Settings so it doesn't return 404):",
+                            text = "Agar aapka GitHub repo pehle se bana hai, to apna GitHub Username aur Repo Name dalein:",
                             style = MaterialTheme.typography.bodySmall,
                             color = ForgeTextSecondary
                         )
@@ -786,7 +1070,29 @@ fun GitHubExportDialog(
                             Button(
                                 onClick = {
                                     if (cleanOwner.isEmpty() || cleanRepo.isEmpty()) {
-                                        onExportStatusMessage("Please enter both your GitHub Username and Repo Name.")
+                                        onExportStatusMessage("Kripya GitHub Username aur Repo Name dono dalein.")
+                                    } else {
+                                        val latestApkUrl =
+                                            "https://github.com/$cleanOwner/$cleanRepo/releases/latest/download/${GitHubExportService.DEFAULT_APK_FILENAME}"
+                                        GitHubExportService.openBrowserUrl(context, latestApkUrl)
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = ForgeSuccessGreen),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Android,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Download Latest .APK from GitHub", color = Color.White)
+                            }
+
+                            Button(
+                                onClick = {
+                                    if (cleanOwner.isEmpty() || cleanRepo.isEmpty()) {
+                                        onExportStatusMessage("Kripya GitHub Username aur Repo Name dono dalein.")
                                     } else {
                                         val zipUrl = "https://github.com/$cleanOwner/$cleanRepo/archive/refs/heads/$cleanBranch.zip"
                                         GitHubExportService.openBrowserUrl(context, zipUrl)
@@ -801,7 +1107,7 @@ fun GitHubExportDialog(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Download Branch .ZIP from GitHub", color = Color.White)
+                                Text("Download Branch .ZIP", color = Color.White)
                             }
 
                             OutlinedButton(
@@ -809,7 +1115,7 @@ fun GitHubExportDialog(
                                     if (cleanOwner.isEmpty()) {
                                         GitHubExportService.openBrowserUrl(context, "https://github.com/login")
                                     } else {
-                                        val path = if (cleanRepo.isNotEmpty()) "/$cleanOwner/$cleanRepo" else "/$cleanOwner"
+                                        val path = if (cleanRepo.isNotEmpty()) "/$cleanOwner/$cleanRepo/releases" else "/$cleanOwner"
                                         val loginUrl = "https://github.com/login?return_to=${Uri.encode(path)}"
                                         GitHubExportService.openBrowserUrl(context, loginUrl)
                                     }
@@ -824,7 +1130,7 @@ fun GitHubExportDialog(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Sign In & Open Repo", color = ForgeTextPrimary)
+                                Text("Sign In & Open Releases", color = ForgeTextPrimary)
                             }
                         }
                     }

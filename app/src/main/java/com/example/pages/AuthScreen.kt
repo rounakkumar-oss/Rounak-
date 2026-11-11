@@ -3,7 +3,6 @@ package com.example.pages
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,7 +45,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -57,15 +55,19 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.credentials.CredentialManager
 import com.example.assets.ForgeAssetCatalog
+import com.example.components.DirectApkAndGitHubBannerCard
 import com.example.components.ForgeBrandHeaderBadge
+import com.example.components.GitHubExportDialog
 import com.example.services.AuthService
 import com.example.styles.ForgeStyles
 import com.example.styles.engineGridBackground
+import com.example.types.ForgeProject
 import com.example.ui.theme.ForgeBlueLight
 import com.example.ui.theme.ForgeCardBorder
 import com.example.ui.theme.ForgeCharcoalBg
 import com.example.ui.theme.ForgeDangerRed
 import com.example.ui.theme.ForgeElectricBlue
+import com.example.ui.theme.ForgeSuccessGreen
 import com.example.ui.theme.ForgeSurface
 import com.example.ui.theme.ForgeSurfaceElevated
 import com.example.ui.theme.ForgeTextPrimary
@@ -82,6 +84,16 @@ fun AuthScreen(
     val credentialManager = remember(context) { CredentialManager.create(context) }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var statusNotice by remember { mutableStateOf<String?>(null) }
+    var showGitHubApkModal by remember { mutableStateOf(false) }
+
+    val defaultStarterProject = remember {
+        ForgeProject(
+            id = "world-forge-ai-starter",
+            name = "World Forge AI Open World",
+            description = "WORLD FORGE AI — Step 01 Foundation & Open World Game Engine Platform"
+        )
+    }
 
     LaunchedEffect(Unit) {
         AuthService.attemptAutoSignIn(
@@ -90,6 +102,17 @@ fun AuthScreen(
             onAuthSuccess = onAuthSuccess,
             onUnauthenticated = { /* Stay on interactive sign-in screen */ },
             scope = scope
+        )
+    }
+
+    if (showGitHubApkModal) {
+        GitHubExportDialog(
+            project = defaultStarterProject,
+            allProjects = listOf(defaultStarterProject),
+            onDismiss = { showGitHubApkModal = false },
+            onExportStatusMessage = { msg ->
+                statusNotice = msg
+            }
         )
     }
 
@@ -104,7 +127,7 @@ fun AuthScreen(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 540.dp)
+                .widthIn(max = 580.dp)
                 .verticalScroll(rememberScrollState()),
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = ForgeSurface),
@@ -116,7 +139,7 @@ fun AuthScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(190.dp)
+                        .height(180.dp)
                 ) {
                     Image(
                         painter = painterResource(id = ForgeAssetCatalog.HeroBannerRes),
@@ -139,16 +162,39 @@ fun AuthScreen(
                 }
 
                 Column(
-                    modifier = Modifier.padding(24.dp),
+                    modifier = Modifier.padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
+                    if (statusNotice != null) {
+                        Surface(
+                            color = ForgeSuccessGreen.copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, ForgeSuccessGreen.copy(alpha = 0.6f))
+                        ) {
+                            Text(
+                                text = statusNotice!!,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = ForgeSuccessGreen,
+                                modifier = Modifier.padding(12.dp)
+                            )
+                        }
+                    }
+
+                    // Prominent Direct APK & GitHub Download Center right on the first screen!
+                    DirectApkAndGitHubBannerCard(
+                        activeProject = defaultStarterProject,
+                        allProjects = listOf(defaultStarterProject),
+                        onOpenGitHubApkHub = { showGitHubApkModal = true },
+                        onStatusMessage = { statusNotice = it }
+                    )
+
                     Text(
                         text = "AI-Powered Open World Game Development Platform",
                         style = MaterialTheme.typography.headlineMedium,
                         color = ForgeTextPrimary
                     )
                     Text(
-                        text = "Welcome to Development Stage 01 (Foundation & Main Dashboard). Sign in with your Google Developer account to access your persistent project workspace, configure target platforms, and manage game projects across devices.",
+                        text = "Sign in with your Google Developer account to access your persistent Cloud Firestore project workspace, create/rename/delete game projects, and configure target platforms.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = ForgeTextSecondary
                     )
@@ -226,7 +272,7 @@ fun AuthScreen(
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                text = "Sign in with Google",
+                                text = "Sign in with Google (Open Dashboard)",
                                 style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold
                             )

@@ -86,14 +86,27 @@ fun DashboardPage(
     onRenameProject: (ForgeProject) -> Unit,
     onDeleteProject: (ForgeProject) -> Unit,
     onExportToGitHub: (ForgeProject?) -> Unit = {},
+    onPostStatusMessage: (String) -> Unit = {},
     onCloseOpenedProject: () -> Unit,
     onNavigateTo: (ForgeNavDestination) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val allProjects = (projectsState as? ProjectsUiState.Success)?.projects.orEmpty()
+
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(22.dp)
+        verticalArrangement = Arrangement.spacedBy(20.dp)
     ) {
+        // 0. Prominent Direct Android .APK & GitHub Download Center (Impossible to miss!)
+        com.example.components.DirectApkAndGitHubBannerCard(
+            activeProject = activeOpenedProject ?: allProjects.firstOrNull(),
+            allProjects = allProjects,
+            onOpenGitHubApkHub = {
+                onExportToGitHub(activeOpenedProject ?: allProjects.firstOrNull())
+            },
+            onStatusMessage = onPostStatusMessage
+        )
+
         // 1. Hero Welcome & Step 01 Foundation Banner
         Card(
             modifier = Modifier
@@ -108,14 +121,11 @@ fun DashboardPage(
                     painter = painterResource(id = ForgeAssetCatalog.HeroBannerRes),
                     contentDescription = "World Forge AI Engine Viewport Banner",
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(230.dp)
+                    modifier = Modifier.matchParentSize()
                 )
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(230.dp)
+                        .matchParentSize()
                         .background(ForgeStyles.HeroOverlayBrush)
                 )
 
@@ -203,23 +213,25 @@ fun DashboardPage(
                             )
                         }
 
-                        OutlinedButton(
+                        Button(
                             onClick = { onExportToGitHub(activeOpenedProject) },
                             shape = RoundedCornerShape(10.dp),
-                            border = BorderStroke(1.dp, ForgeElectricBlue.copy(alpha = 0.6f)),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = ForgeSuccessGreen,
+                                contentColor = Color.White
+                            ),
                             modifier = Modifier.testTag("dashboard_github_download_button")
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Download,
                                 contentDescription = null,
-                                tint = ForgeBlueLight,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "GitHub / Download",
+                                text = "APK / GitHub Download",
                                 style = MaterialTheme.typography.labelLarge,
-                                color = ForgeBlueLight
+                                fontWeight = FontWeight.Bold
                             )
                         }
                     }

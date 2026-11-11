@@ -229,6 +229,7 @@ fun WorldForgeMainLayout(
                         statusBannerMessage = statusBannerMessage,
                         currentUserId = viewModel.currentUserId,
                         onDismissBanner = { viewModel.clearStatusBanner() },
+                        onPostStatusMessage = { viewModel.postStatusMessage(it) },
                         onCreateNewProject = { viewModel.openCreateProjectDialog() },
                         onOpenProject = { viewModel.openProject(it) },
                         onRenameProject = { viewModel.requestRenameProject(it) },
@@ -296,6 +297,7 @@ fun WorldForgeMainLayout(
                         statusBannerMessage = statusBannerMessage,
                         currentUserId = viewModel.currentUserId,
                         onDismissBanner = { viewModel.clearStatusBanner() },
+                        onPostStatusMessage = { viewModel.postStatusMessage(it) },
                         onCreateNewProject = { viewModel.openCreateProjectDialog() },
                         onOpenProject = { viewModel.openProject(it) },
                         onRenameProject = { viewModel.requestRenameProject(it) },
@@ -367,15 +369,24 @@ private fun ForgeTopAppBar(
                 }
             },
             actions = {
-                IconButton(
+                Button(
                     onClick = onGitHubDownloadClick,
-                    modifier = Modifier.testTag("topbar_github_export_button")
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ForgeSuccessGreen,
+                        contentColor = Color.White
+                    ),
+                    modifier = Modifier
+                        .padding(end = 6.dp)
+                        .testTag("topbar_github_export_button")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Download,
-                        contentDescription = "GitHub Export & Direct Download",
-                        tint = ForgeBlueLight
+                        contentDescription = "APK & GitHub Direct Download",
+                        modifier = Modifier.size(16.dp)
                     )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("APK / GitHub", style = MaterialTheme.typography.labelLarge)
                 }
                 Button(
                     onClick = onQuickCreateClick,
@@ -394,7 +405,7 @@ private fun ForgeTopAppBar(
                         modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
-                    Text("New Game", style = MaterialTheme.typography.labelLarge)
+                    Text("New", style = MaterialTheme.typography.labelLarge)
                 }
             }
         )
@@ -422,6 +433,30 @@ private fun ForgeNavigationSidebarContent(
                 modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
             )
 
+            Spacer(modifier = Modifier.height(6.dp))
+            Button(
+                onClick = onOpenGitHubHub,
+                shape = RoundedCornerShape(10.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = ForgeSuccessGreen,
+                    contentColor = Color.White
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("sidebar_top_github_apk_button")
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Download,
+                    contentDescription = null,
+                    modifier = Modifier.size(17.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "APK & GitHub Download",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold
+                )
+            }
             Spacer(modifier = Modifier.height(6.dp))
             HorizontalDivider(color = ForgeCardBorder)
             Spacer(modifier = Modifier.height(6.dp))
@@ -506,7 +541,7 @@ private fun ForgeNavigationSidebarContent(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = "GitHub / Download",
+                    text = "APK / GitHub Download",
                     style = MaterialTheme.typography.labelLarge,
                     color = ForgeBlueLight
                 )
@@ -563,6 +598,7 @@ private fun WorkspaceMainContentArea(
     statusBannerMessage: String?,
     currentUserId: String,
     onDismissBanner: () -> Unit,
+    onPostStatusMessage: (String) -> Unit,
     onCreateNewProject: () -> Unit,
     onOpenProject: (com.example.types.ForgeProject) -> Unit,
     onRenameProject: (com.example.types.ForgeProject) -> Unit,
@@ -634,6 +670,7 @@ private fun WorkspaceMainContentArea(
                         onRenameProject = onRenameProject,
                         onDeleteProject = onDeleteProject,
                         onExportToGitHub = onExportToGitHub,
+                        onPostStatusMessage = onPostStatusMessage,
                         onCloseOpenedProject = onCloseOpenedProject,
                         onNavigateTo = onNavigateTo
                     )
