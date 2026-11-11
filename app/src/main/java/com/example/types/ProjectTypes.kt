@@ -60,6 +60,7 @@ enum class ForgeNavDestination(
     val isCoreImplemented: Boolean
 ) {
     DASHBOARD("dashboard", "Dashboard", "Engine Command Center & Overview", true),
+    APK_DOWNLOAD_INSTALL("apk_download_install", "APK Download & Install", "Direct Engine APK Download & Installer Page", true),
     MY_PROJECTS("my_projects", "My Projects", "Manage & Inspect Game Projects", true),
     CREATE_NEW_GAME("create_new_game", "Create New Game", "Initialize New World Forge Project", true),
     AI_WORLD_GENERATOR("ai_world_generator", "AI World Generator", "Procedural Biome & Terrain Synthesis", false),

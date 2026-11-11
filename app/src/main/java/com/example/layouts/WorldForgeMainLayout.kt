@@ -70,6 +70,7 @@ import com.example.components.DeleteProjectConfirmDialog
 import com.example.components.ForgeBrandHeaderBadge
 import com.example.components.GitHubExportDialog
 import com.example.components.RenameProjectDialog
+import com.example.pages.ApkInstallDownloadPage
 import com.example.pages.ComingSoonModulePage
 import com.example.pages.DashboardPage
 import com.example.pages.EngineSettingsPage
@@ -195,7 +196,7 @@ fun WorldForgeMainLayout(
                             viewModel.navigateTo(dest)
                         },
                         onOpenGitHubHub = {
-                            viewModel.openGitHubExportModal(activeOpenedProject)
+                            viewModel.navigateTo(ForgeNavDestination.APK_DOWNLOAD_INSTALL)
                         },
                         onSignOut = {
                             AuthService.signOut(credentialManager, scope)
@@ -213,7 +214,7 @@ fun WorldForgeMainLayout(
                             showMenuButton = false,
                             onMenuClick = {},
                             onGitHubDownloadClick = {
-                                viewModel.openGitHubExportModal(activeOpenedProject)
+                                viewModel.navigateTo(ForgeNavDestination.APK_DOWNLOAD_INSTALL)
                             },
                             onQuickCreateClick = { viewModel.openCreateProjectDialog() }
                         )
@@ -259,7 +260,7 @@ fun WorldForgeMainLayout(
                             },
                             onOpenGitHubHub = {
                                 scope.launch { drawerState.close() }
-                                viewModel.openGitHubExportModal(activeOpenedProject)
+                                viewModel.navigateTo(ForgeNavDestination.APK_DOWNLOAD_INSTALL)
                             },
                             onSignOut = {
                                 scope.launch { drawerState.close() }
@@ -281,7 +282,7 @@ fun WorldForgeMainLayout(
                                 scope.launch { drawerState.open() }
                             },
                             onGitHubDownloadClick = {
-                                viewModel.openGitHubExportModal(activeOpenedProject)
+                                viewModel.navigateTo(ForgeNavDestination.APK_DOWNLOAD_INSTALL)
                             },
                             onQuickCreateClick = { viewModel.openCreateProjectDialog() }
                         )
@@ -673,6 +674,15 @@ private fun WorkspaceMainContentArea(
                         onPostStatusMessage = onPostStatusMessage,
                         onCloseOpenedProject = onCloseOpenedProject,
                         onNavigateTo = onNavigateTo
+                    )
+                }
+                ForgeNavDestination.APK_DOWNLOAD_INSTALL -> {
+                    val allProjs = (projectsState as? ProjectsUiState.Success)?.projects.orEmpty()
+                    ApkInstallDownloadPage(
+                        activeProject = activeOpenedProject,
+                        allProjects = allProjs,
+                        onPostStatusMessage = onPostStatusMessage,
+                        onReturnToDashboard = { onNavigateTo(ForgeNavDestination.DASHBOARD) }
                     )
                 }
                 ForgeNavDestination.MY_PROJECTS -> {

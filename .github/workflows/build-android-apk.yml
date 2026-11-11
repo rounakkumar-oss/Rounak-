@@ -1,0 +1,84 @@
+name: Build & Release WORLD FORGE AI Android APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android-apk:
+    name: Compile WORLD FORGE AI Engine APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      - name: Ensure debug.keystore exists for APK signing
+        run: |
+          if [ ! -f "debug.keystore" ]; then
+            keytool -genkeypair -v \
+              -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+      - name: Ensure google-services.json exists
+        run: |
+          if [ ! -f "app/google-services.json" ]; then
+            echo '{"project_info":{"project_number":"000000000000","project_id":"world-forge-ai-placeholder","storage_bucket":"world-forge-ai-placeholder.appspot.com"},"client":[{"client_info":{"mobilesdk_app_id":"1:000000000000:android:0000000000000000","android_client_info":{"package_name":"com.aistudio.worldforge.wfai01"}},"api_key":[{"current_key":"AIzaSyPlaceholderKeyForCIBuildOnly0000000"}]}],"configuration_version":"1"}' > app/google-services.json
+          fi
+
+      - name: Build Debug APK with Gradle
+        run: gradle :app:assembleDebug --no-daemon
+
+      - name: Prepare Named Engine APK
+        run: |
+          mkdir -p dist-apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist-apk/WorldForgeAI-Engine-v0.1.0.apk
+          ls -lh dist-apk/WorldForgeAI-Engine-v0.1.0.apk
+
+      - name: Upload APK to GitHub Actions Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: WorldForgeAI-Engine-APK
+          path: dist-apk/WorldForgeAI-Engine-v0.1.0.apk
+          if-no-files-found: error
+
+      - name: Publish APK to GitHub Releases
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.1.0-latest
+          name: "WORLD FORGE AI Engine — Android APK (Latest Build)"
+          body: |
+            ## WORLD FORGE AI — Direct Android APK Download & Install
+            Tap **`WorldForgeAI-Engine-v0.1.0.apk`** under **Assets** below to download and install the WORLD FORGE AI Engine directly on your Android phone.
+          files: dist-apk/WorldForgeAI-Engine-v0.1.0.apk
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

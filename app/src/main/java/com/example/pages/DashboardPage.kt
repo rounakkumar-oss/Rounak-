@@ -101,6 +101,9 @@ fun DashboardPage(
         com.example.components.DirectApkAndGitHubBannerCard(
             activeProject = activeOpenedProject ?: allProjects.firstOrNull(),
             allProjects = allProjects,
+            onOpenApkInstallPage = {
+                onNavigateTo(ForgeNavDestination.APK_DOWNLOAD_INSTALL)
+            },
             onOpenGitHubApkHub = {
                 onExportToGitHub(activeOpenedProject ?: allProjects.firstOrNull())
             },
@@ -214,7 +217,7 @@ fun DashboardPage(
                         }
 
                         Button(
-                            onClick = { onExportToGitHub(activeOpenedProject) },
+                            onClick = { onNavigateTo(ForgeNavDestination.APK_DOWNLOAD_INSTALL) },
                             shape = RoundedCornerShape(10.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = ForgeSuccessGreen,
@@ -229,7 +232,7 @@ fun DashboardPage(
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "APK / GitHub Download",
+                                text = "APK Download & Install Page",
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.Bold
                             )

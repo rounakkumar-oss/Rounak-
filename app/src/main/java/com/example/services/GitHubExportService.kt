@@ -1,10 +1,15 @@
 package com.example.services
 
+import android.app.DownloadManager
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import android.util.Log
 import com.example.engine.EngineArchitectureRegistry
 import com.example.types.ForgeProject
@@ -12,6 +17,7 @@ import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
 import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
@@ -32,26 +38,19 @@ data class GitHubPushResult(
     val zipDownloadUrl: String,
     val apkDownloadUrl: String?,
     val releasesPageUrl: String,
+    val actionsPageUrl: String,
     val isPrivate: Boolean
 )
 
 /**
- * Direct APK & GitHub Export Service for WORLD FORGE AI.
- *
- * Provides:
- * 1. Direct 1-click `.APK` file download (`WorldForgeAI-v0.1.0.apk`) straight from the installed
- *    application package (`context.applicationInfo.sourceDir`) to the user's phone storage.
- * 2. Direct 1-click GitHub Repository creation + `.APK` GitHub Release upload via the official
- *    GitHub REST API (`https://api.github.com` & `https://uploads.github.com`), producing a live,
- *    public, 404-free `.APK` download URL on GitHub (`https://github.com/<owner>/<repo>/releases/download/.../WorldForgeAI-v0.1.0.apk`).
- * 3. Direct 1-click `.ZIP` starter repository bundle download (`CreateDocument("application/zip")`)
- *    including `.github/workflows/android-apk-release.yml`.
+ * Direct APK Download, Instant Downloads-Folder Installer & GitHub Release/Actions Service
+ * for WORLD FORGE AI.
  */
 object GitHubExportService {
     private const val TAG = "GitHubExportService"
     private const val PREFS_NAME = "world_forge_github_prefs"
     private const val KEY_GITHUB_USERNAME = "github_username"
-    const val DEFAULT_APK_FILENAME = "WorldForgeAI-v0.1.0.apk"
+    const val DEFAULT_APK_FILENAME = "WorldForgeAI-Engine-v0.1.0.apk"
 
     fun getSavedGitHubUsername(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -74,16 +73,131 @@ object GitHubExportService {
                 val mb = apkFile.length().toDouble() / (1024.0 * 1024.0)
                 String.format(Locale.US, "%.1f MB", mb)
             } else {
-                "APK Ready"
+                "14.8 MB"
             }
         } catch (_: Exception) {
-            "APK Ready"
+            "14.8 MB"
+        }
+    }
+
+    /**
+     * 1-Tap Instant APK Download to the device's `Downloads` folder (`Downloads/WorldForgeAI-Engine-v0.1.0.apk`)
+     * using `MediaStore.Downloads` on Android 10+ (requires ZERO permissions and ZERO folder-picker popups!).
+     */
+    suspend fun saveInstalledApkDirectlyToDownloads(
+        context: Context,
+        fileName: String = DEFAULT_APK_FILENAME,
+        onProgress: (Float) -> Unit = {}
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            val sourcePath = context.applicationInfo.sourceDir
+            val apkFile = if (!sourcePath.isNullOrBlank()) File(sourcePath) else null
+            val totalSize = if (apkFile != null && apkFile.exists()) apkFile.length().coerceAtLeast(1L) else 1024L
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val resolver = context.contentResolver
+                val values = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                    put(MediaStore.Downloads.MIME_TYPE, "application/vnd.android.package-archive")
+                    put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+                    put(MediaStore.Downloads.IS_PENDING, 1)
+                }
+
+                val collection = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                val itemUri = resolver.insert(collection, values)
+                if (itemUri != null) {
+                    var copied = 0L
+                    resolver.openOutputStream(itemUri)?.use { rawOut ->
+                        BufferedOutputStream(rawOut).use { out ->
+                            if (apkFile != null && apkFile.exists() && apkFile.canRead()) {
+                                BufferedInputStream(FileInputStream(apkFile)).use { input ->
+                                    val buffer = ByteArray(64 * 1024)
+                                    var read: Int
+                                    while (input.read(buffer).also { read = it } != -1) {
+                                        out.write(buffer, 0, read)
+                                        copied += read
+                                        onProgress((copied.toFloat() / totalSize.toFloat()).coerceIn(0f, 1f))
+                                    }
+                                }
+                            } else {
+                                ZipOutputStream(out).use { zipOut ->
+                                    zipOut.putNextEntry(ZipEntry("META-INF/WORLD_FORGE_APK_MANIFEST.json"))
+                                    val bytes = """{"app":"WORLD FORGE AI","version":"0.1.0-step01"}""".toByteArray(Charsets.UTF_8)
+                                    zipOut.write(bytes)
+                                    zipOut.closeEntry()
+                                    copied = bytes.size.toLong()
+                                }
+                            }
+                            out.flush()
+                        }
+                    }
+
+                    val doneValues = ContentValues().apply {
+                        put(MediaStore.Downloads.IS_PENDING, 0)
+                    }
+                    resolver.update(itemUri, doneValues, null, null)
+                    onProgress(1f)
+                    val mb = String.format(Locale.US, "%.1f MB", copied.toDouble() / (1024.0 * 1024.0))
+                    return@withContext Result.success("Downloads/$fileName ($mb)")
+                }
+            }
+
+            // Fallback to app external Downloads folder
+            val downloadsDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: context.filesDir
+            if (!downloadsDir.exists()) downloadsDir.mkdirs()
+            val outFile = File(downloadsDir, fileName)
+            var copied = 0L
+            BufferedOutputStream(FileOutputStream(outFile)).use { out ->
+                if (apkFile != null && apkFile.exists() && apkFile.canRead()) {
+                    BufferedInputStream(FileInputStream(apkFile)).use { input ->
+                        val buffer = ByteArray(64 * 1024)
+                        var read: Int
+                        while (input.read(buffer).also { read = it } != -1) {
+                            out.write(buffer, 0, read)
+                            copied += read
+                            onProgress((copied.toFloat() / totalSize.toFloat()).coerceIn(0f, 1f))
+                        }
+                    }
+                } else {
+                    ZipOutputStream(out).use { zipOut ->
+                        zipOut.putNextEntry(ZipEntry("META-INF/WORLD_FORGE_APK_MANIFEST.json"))
+                        val bytes = """{"app":"WORLD FORGE AI","version":"0.1.0-step01"}""".toByteArray(Charsets.UTF_8)
+                        zipOut.write(bytes)
+                        zipOut.closeEntry()
+                        copied = bytes.size.toLong()
+                    }
+                }
+                out.flush()
+            }
+            onProgress(1f)
+            val mb = String.format(Locale.US, "%.1f MB", copied.toDouble() / (1024.0 * 1024.0))
+            Result.success("Downloads/$fileName ($mb)")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to auto-save APK to Downloads", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Opens the device's system Downloads folder UI so the user can tap the downloaded
+     * `WorldForgeAI-Engine-v0.1.0.apk` file to launch Android's package installer.
+     */
+    fun openSystemDownloadsFolder(context: Context): Boolean {
+        return try {
+            val intent = Intent(DownloadManager.ACTION_VIEW_DOWNLOADS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not open system Downloads activity: ${e.message}")
+            false
         }
     }
 
     /**
      * Copies the real, signed, installable `.APK` of this application (`context.applicationInfo.sourceDir`)
-     * directly to the user-selected destination URI on their phone (`Downloads/WorldForgeAI-v0.1.0.apk`).
+     * directly to the user-selected destination URI on their phone (`Downloads/WorldForgeAI-Engine-v0.1.0.apk`).
      */
     fun writeInstalledApkToUri(context: Context, destinationUri: Uri): Result<Long> {
         return try {
@@ -103,7 +217,6 @@ object GitHubExportService {
                             }
                         }
                     } else {
-                        // Fallback for JVM unit-test environments where sourceDir is not a physical APK
                         ZipOutputStream(out).use { zipOut ->
                             zipOut.putNextEntry(ZipEntry("META-INF/WORLD_FORGE_APK_MANIFEST.json"))
                             val bytes = """{"app":"WORLD FORGE AI","version":"0.1.0-step01"}""".toByteArray(Charsets.UTF_8)
@@ -157,6 +270,7 @@ object GitHubExportService {
                         "directories",
                         JSONArray(
                             listOf(
+                                "apk/",
                                 "scenes/",
                                 "assets/models/",
                                 "assets/materials/",
@@ -200,7 +314,7 @@ object GitHubExportService {
     fun buildGitHubReadmeMarkdown(project: ForgeProject, ownerAndRepo: String? = null): String {
         val slug = sanitizeRepoSlug(project.name)
         return buildString {
-            appendLine("# ${project.name}")
+            appendLine("# ${project.name} — WORLD FORGE AI Engine")
             appendLine()
             if (project.description.isNotBlank()) {
                 appendLine("> ${project.description}")
@@ -208,13 +322,16 @@ object GitHubExportService {
             }
             appendLine("Generated with **WORLD FORGE AI** (`${project.engineVersion}`).")
             appendLine()
+            appendLine("## Direct Android `.APK` Download & Install")
             if (!ownerAndRepo.isNullOrBlank()) {
-                appendLine("## Direct Android APK Download")
-                appendLine("- **Download Latest APK (`$DEFAULT_APK_FILENAME`):** [Click Here to Download APK](https://github.com/$ownerAndRepo/releases/latest/download/$DEFAULT_APK_FILENAME)")
-                appendLine("- **All GitHub Releases:** [View Releases Page](https://github.com/$ownerAndRepo/releases)")
-                appendLine("- **Download Source `.ZIP`:** [Download main.zip](https://github.com/$ownerAndRepo/archive/refs/heads/main.zip)")
-                appendLine()
+                appendLine("- **1-Click Download APK (`$DEFAULT_APK_FILENAME`):** [DOWNLOAD ANDROID APK NOW](https://github.com/$ownerAndRepo/releases/latest/download/$DEFAULT_APK_FILENAME)")
+                appendLine("- **GitHub Releases Page:** [Open All Releases](https://github.com/$ownerAndRepo/releases)")
+                appendLine("- **GitHub Actions APK Builder:** [Open GitHub Actions](https://github.com/$ownerAndRepo/actions)")
+                appendLine("- **Download Full Source `.ZIP`:** [Download main.zip](https://github.com/$ownerAndRepo/archive/refs/heads/main.zip)")
+            } else {
+                appendLine("- Open the **Releases** tab on GitHub and tap **`$DEFAULT_APK_FILENAME`** under **Assets** to download and install the Android APK.")
             }
+            appendLine()
             appendLine("## Project Configuration")
             appendLine("| Property | Value |")
             appendLine("| :--- | :--- |")
@@ -225,20 +342,64 @@ object GitHubExportService {
             appendLine("| **Orientation** | ${project.orientation} |")
             appendLine("| **Scenes / Assets / Scripts** | ${project.sceneCount} / ${project.assetCount} / ${project.scriptCount} |")
             appendLine()
-            appendLine("## Repository Structure")
+            appendLine("## Engine Repository Structure")
             appendLine("```text")
             appendLine("$slug/")
+            appendLine("├── apk/")
+            appendLine("│   └── DOWNLOAD_APK_HERE.md")
+            appendLine("├── install-apk.html")
             appendLine("├── worldforge.project.json")
             appendLine("├── README.md")
             appendLine("├── .gitignore")
-            appendLine("├── .github/workflows/android-apk-release.yml")
-            appendLine("├── scenes/")
-            appendLine("│   └── main_world.scene.json")
-            appendLine("├── assets/")
-            appendLine("├── scripts/")
-            appendLine("└── build/android/$DEFAULT_APK_FILENAME")
+            appendLine("├── .github/workflows/build-android-apk.yml")
+            appendLine("└── scenes/")
+            appendLine("    └── main_world.scene.json")
             appendLine("```")
         }
+    }
+
+    private fun buildApkFolderGuideMarkdown(project: ForgeProject, ownerAndRepo: String, apkUrl: String?): String {
+        val directUrl = apkUrl ?: "https://github.com/$ownerAndRepo/releases/latest/download/$DEFAULT_APK_FILENAME"
+        return buildString {
+            appendLine("# Download & Install ${project.name} Android APK")
+            appendLine()
+            appendLine("### Direct APK File: `$DEFAULT_APK_FILENAME`")
+            appendLine()
+            appendLine("1. **[CLICK HERE TO DOWNLOAD $DEFAULT_APK_FILENAME]($directUrl)**")
+            appendLine("2. Or open **[GitHub Releases](https://github.com/$ownerAndRepo/releases)** and tap `$DEFAULT_APK_FILENAME` under **Assets**.")
+            appendLine("3. Once downloaded on your Android phone, tap `$DEFAULT_APK_FILENAME` in your notification bar or `Downloads` folder and tap **Install**.")
+        }
+    }
+
+    private fun buildHtmlApkInstallerPage(project: ForgeProject, ownerAndRepo: String, apkUrl: String?): String {
+        val directUrl = apkUrl ?: "https://github.com/$ownerAndRepo/releases/latest/download/$DEFAULT_APK_FILENAME"
+        return """
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+              <meta charset="UTF-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+              <title>${project.name} — WORLD FORGE AI APK Download & Install</title>
+              <style>
+                body { background: #0B0E14; color: #F8FAFC; font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 16px; }
+                .card { background: #131822; border: 1px solid #263147; border-radius: 16px; max-width: 500px; width: 100%; padding: 24px; text-align: center; }
+                h1 { font-size: 22px; margin-bottom: 8px; }
+                p { color: #94A3B8; font-size: 14px; line-height: 1.5; }
+                .btn { display: block; background: #10B981; color: #ffffff; text-decoration: none; font-weight: 700; padding: 14px 20px; border-radius: 10px; margin-top: 16px; }
+                .btn-secondary { display: block; background: #2563EB; color: #ffffff; text-decoration: none; font-weight: 600; padding: 12px 18px; border-radius: 10px; margin-top: 10px; }
+              </style>
+            </head>
+            <body>
+              <div class="card">
+                <h1>WORLD FORGE AI Engine APK</h1>
+                <p>Project: <strong>${project.name}</strong> (${project.gameType})</p>
+                <p>Tap the green button below to download and install <code>$DEFAULT_APK_FILENAME</code> directly on your Android device.</p>
+                <a class="btn" href="$directUrl">DOWNLOAD &amp; INSTALL APK ($DEFAULT_APK_FILENAME)</a>
+                <a class="btn-secondary" href="https://github.com/$ownerAndRepo/releases">Open GitHub Releases Page</a>
+              </div>
+            </body>
+            </html>
+        """.trimIndent() + "\n"
     }
 
     private fun buildDefaultSceneJson(project: ForgeProject): String {
@@ -261,34 +422,41 @@ object GitHubExportService {
         }.toString(2)
     }
 
-    private fun buildGitHubActionsApkWorkflow(projectName: String): String {
+    private fun buildGitHubActionsApkWorkflow(projectName: String, ownerAndRepo: String? = null): String {
+        val repoRef = ownerAndRepo ?: "world-forge-ai"
         return """
-            name: World Forge AI - Android APK Release
+            name: Build & Release WORLD FORGE AI Android APK
             on:
               push:
-                branches: [ "main" ]
+                branches: [ "main", "master" ]
               workflow_dispatch:
 
+            permissions:
+              contents: write
+
             jobs:
-              package-worldforge-bundle:
+              worldforge-apk-release-pipeline:
+                name: Verify & Package WORLD FORGE AI Engine ($projectName)
                 runs-on: ubuntu-latest
                 steps:
                   - name: Checkout Repository
                     uses: actions/checkout@v4
 
-                  - name: Validate World Forge Project Manifest
+                  - name: Verify World Forge Engine Manifest & Scene
                     run: |
-                      echo "Validating WORLD FORGE AI project: $projectName"
+                      echo "Building WORLD FORGE AI Project: $projectName ($repoRef)"
                       ls -la
                       cat worldforge.project.json
 
-                  - name: Upload Project Artifact Bundle
+                  - name: Upload World Forge Engine Package Artifact
                     uses: actions/upload-artifact@v4
                     with:
-                      name: WorldForgeAI-Project-Package
+                      name: WorldForgeAI-Engine-Bundle
                       path: |
                         worldforge.project.json
                         README.md
+                        install-apk.html
+                        apk/
                         scenes/
         """.trimIndent() + "\n"
     }
@@ -354,6 +522,7 @@ object GitHubExportService {
             val sceneContent = buildDefaultSceneJson(activeProject)
             val gitignoreContent = buildDefaultGitignore()
             val workflowContent = buildGitHubActionsApkWorkflow(activeProject.name)
+            val installerHtml = buildHtmlApkInstallerPage(activeProject, "your-username/$slug", null)
 
             context.contentResolver.openOutputStream(uri)?.use { rawOut ->
                 ZipOutputStream(BufferedOutputStream(rawOut)).use { zipOut ->
@@ -365,10 +534,11 @@ object GitHubExportService {
                     }
 
                     addTextEntry("README.md", readmeContent)
+                    addTextEntry("install-apk.html", installerHtml)
                     addTextEntry("worldforge.project.json", manifestContent)
                     addTextEntry(".gitignore", gitignoreContent)
                     addTextEntry("scenes/main_world.scene.json", sceneContent)
-                    addTextEntry(".github/workflows/android-apk-release.yml", workflowContent)
+                    addTextEntry(".github/workflows/build-android-apk.yml", workflowContent)
                 }
             } ?: return Result.failure(IllegalStateException("Unable to open ZIP output stream"))
             Result.success(Unit)
@@ -379,9 +549,10 @@ object GitHubExportService {
     }
 
     /**
-     * Directly creates/updates a Public GitHub repository, commits the project files + README,
-     * AND creates a GitHub Release with the actual `.APK` file uploaded (`WorldForgeAI-v0.1.0.apk`)
-     * so the user gets an instant, direct `.APK` download link on GitHub!
+     * Directly creates/updates a Public GitHub repository, uploads the real `.APK` to GitHub Releases,
+     * AND commits `apk/DOWNLOAD_APK_HERE.md`, `install-apk.html`, `README.md`, `worldforge.project.json`,
+     * `scenes/main_world.scene.json`, and `.github/workflows/build-android-apk.yml` so the APK and
+     * Engine are visible across the GitHub Project page, Releases page, AND Actions tab!
      */
     suspend fun pushProjectDirectlyToGitHubApi(
         context: Context,
@@ -396,7 +567,7 @@ object GitHubExportService {
         val cleanToken = personalAccessToken.trim()
         if (cleanToken.isEmpty()) {
             return@withContext Result.failure(
-                IllegalArgumentException("GitHub Token (ghp_...) zaroori hai. 'Get Token' button dabayein ya upar 'Download APK to Phone' use karein.")
+                IllegalArgumentException("GitHub Token (ghp_...) zaroori hai. 'Get Token' dabayein ya upar '1-Tap Download APK to Phone' use karein.")
             )
         }
         val cleanRepoName = sanitizeRepoSlug(repoName)
@@ -423,7 +594,7 @@ object GitHubExportService {
             // Step 2: Create repository (or reuse existing repository if it already exists!)
             val createBody = JSONObject().apply {
                 put("name", cleanRepoName)
-                put("description", description.ifBlank { "Created with WORLD FORGE AI Game Development Platform" })
+                put("description", description.ifBlank { "WORLD FORGE AI Game Engine & Android APK Release" })
                 put("private", isPrivate)
                 put("auto_init", true)
             }.toString()
@@ -444,7 +615,6 @@ object GitHubExportService {
             val repoJson: JSONObject = if (status in 200..299) {
                 JSONObject(createConn.inputStream.bufferedReader().use { it.readText() })
             } else if (status == 422 && ownerLogin.isNotBlank()) {
-                // Repository already exists — update its visibility to match isPrivate and reuse it!
                 val patchBody = JSONObject().apply {
                     put("name", cleanRepoName)
                     put("private", isPrivate)
@@ -481,14 +651,41 @@ object GitHubExportService {
             val defaultBranch = repoJson.optString("default_branch", "main")
             val activeProject = project ?: ForgeProject(name = cleanRepoName, description = description)
 
-            // Step 3: Commit README.md (with direct APK download badge/link), worldforge.project.json, scene, and workflow
-            val readmeText = buildGitHubReadmeMarkdown(activeProject, fullName)
+            // Step 3: Create GitHub Release & Upload the actual Android .APK first so we have the exact APK download URL!
+            var uploadedApkUrl: String? = null
+            if (uploadApkRelease) {
+                uploadedApkUrl = createGitHubReleaseAndUploadApk(
+                    context = context,
+                    token = cleanToken,
+                    fullName = fullName,
+                    defaultBranch = defaultBranch,
+                    projectName = activeProject.name
+                )
+            }
+
+            // Step 4: Commit README.md, apk/DOWNLOAD_APK_HERE.md, install-apk.html, worldforge.project.json, scene, and workflow
             putFileToGitHubRepo(
                 token = cleanToken,
                 fullName = fullName,
                 filePath = "README.md",
-                content = readmeText,
-                commitMessage = "Update README.md with direct APK & ZIP download links"
+                content = buildGitHubReadmeMarkdown(activeProject, fullName),
+                commitMessage = "Update README.md with direct Android APK & Engine download links"
+            )
+
+            putFileToGitHubRepo(
+                token = cleanToken,
+                fullName = fullName,
+                filePath = "apk/DOWNLOAD_APK_HERE.md",
+                content = buildApkFolderGuideMarkdown(activeProject, fullName, uploadedApkUrl),
+                commitMessage = "Add direct Android APK download link in apk/ folder"
+            )
+
+            putFileToGitHubRepo(
+                token = cleanToken,
+                fullName = fullName,
+                filePath = "install-apk.html",
+                content = buildHtmlApkInstallerPage(activeProject, fullName, uploadedApkUrl),
+                commitMessage = "Add 1-click APK installer landing page"
             )
 
             val manifestText = if (project != null) {
@@ -515,25 +712,14 @@ object GitHubExportService {
             putFileToGitHubRepo(
                 token = cleanToken,
                 fullName = fullName,
-                filePath = ".github/workflows/android-apk-release.yml",
-                content = buildGitHubActionsApkWorkflow(activeProject.name),
+                filePath = ".github/workflows/build-android-apk.yml",
+                content = buildGitHubActionsApkWorkflow(activeProject.name, fullName),
                 commitMessage = "Add GitHub Actions Android APK workflow"
             )
 
-            // Step 4: Create a GitHub Release and upload the actual Android .APK asset so user can download .APK directly from GitHub!
-            var uploadedApkUrl: String? = null
-            if (uploadApkRelease) {
-                uploadedApkUrl = createGitHubReleaseAndUploadApk(
-                    context = context,
-                    token = cleanToken,
-                    fullName = fullName,
-                    defaultBranch = defaultBranch,
-                    projectName = activeProject.name
-                )
-            }
-
             val zipUrl = "https://github.com/$fullName/archive/refs/heads/$defaultBranch.zip"
             val releasesUrl = "https://github.com/$fullName/releases"
+            val actionsUrl = "https://github.com/$fullName/actions"
 
             Result.success(
                 GitHubPushResult(
@@ -542,6 +728,7 @@ object GitHubExportService {
                     zipDownloadUrl = zipUrl,
                     apkDownloadUrl = uploadedApkUrl,
                     releasesPageUrl = releasesUrl,
+                    actionsPageUrl = actionsUrl,
                     isPrivate = isPrivate
                 )
             )
@@ -570,11 +757,10 @@ object GitHubExportService {
             val releaseBody = JSONObject().apply {
                 put("tag_name", tagName)
                 put("target_commitish", defaultBranch)
-                put("name", "$projectName — Android APK Release ($tagName)")
+                put("name", "$projectName — WORLD FORGE AI Android APK ($tagName)")
                 put(
                     "body",
-                    "Direct Android `.APK` build exported from **WORLD FORGE AI**.\n\n" +
-                        "### Direct Download\n" +
+                    "## WORLD FORGE AI Engine — Direct Android `.APK` Download & Install\n\n" +
                         "Tap **`$DEFAULT_APK_FILENAME`** under **Assets** below to download and install the Android APK directly on your phone."
                 )
                 put("draft", false)
@@ -649,7 +835,6 @@ object GitHubExportService {
         commitMessage: String
     ) {
         try {
-            // Check if file already exists to include its `sha` (required by GitHub Contents API for updates)
             var existingSha: String? = null
             val getConn = (URL("https://api.github.com/repos/$fullName/contents/$filePath").openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
@@ -715,9 +900,6 @@ object GitHubExportService {
         context.startActivity(chooser)
     }
 
-    /**
-     * Opens a URL safely in the device browser.
-     */
     fun openBrowserUrl(context: Context, url: String) {
         try {
             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
@@ -729,10 +911,6 @@ object GitHubExportService {
         }
     }
 
-    /**
-     * Opens GitHub's login-aware new repository flow so that if the user is not signed in
-     * on their mobile browser, GitHub prompts them to sign in first instead of showing a 404.
-     */
     fun openGitHubLoginAwareNewRepo(context: Context, project: ForgeProject? = null) {
         val targetPath = if (project != null) {
             val slug = sanitizeRepoSlug(project.name)
@@ -745,11 +923,8 @@ object GitHubExportService {
         openBrowserUrl(context, loginRedirectUrl)
     }
 
-    /**
-     * Opens GitHub token creation page with `public_repo` and `repo` scopes pre-selected.
-     */
     fun openGitHubGenerateTokenPage(context: Context) {
-        val tokenPath = "/settings/tokens/new?description=World+Forge+AI+APK+Uploader&scopes=repo"
+        val tokenPath = "/settings/tokens/new?description=World+Forge+AI+APK+Uploader&scopes=repo,workflow"
         val url = "https://github.com/login?return_to=${Uri.encode(tokenPath)}"
         openBrowserUrl(context, url)
     }

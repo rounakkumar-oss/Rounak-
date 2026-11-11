@@ -102,43 +102,16 @@ import kotlinx.coroutines.launch
 fun DirectApkAndGitHubBannerCard(
     activeProject: ForgeProject?,
     allProjects: List<ForgeProject>,
+    onOpenApkInstallPage: () -> Unit = {},
     onOpenGitHubApkHub: () -> Unit,
     onStatusMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val apkSizeLabel = remember(context) { GitHubExportService.getInstalledApkSizeLabel(context) }
-    val targetSlug = remember(activeProject) {
-        if (activeProject != null) GitHubExportService.sanitizeRepoSlug(activeProject.name)
-        else "world-forge-ai"
-    }
-
-    val directApkLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/vnd.android.package-archive")
-    ) { uri ->
-        if (uri != null) {
-            val result = GitHubExportService.writeInstalledApkToUri(context, uri)
-            result.onSuccess { bytes ->
-                val mb = String.format(Locale.US, "%.1f MB", bytes.toDouble() / (1024.0 * 1024.0))
-                onStatusMessage("APK Downloaded! Saved ${targetSlug}-v0.1.0.apk ($mb) directly to your phone.")
-            }.onFailure { err ->
-                onStatusMessage("Failed to save APK: ${err.localizedMessage}")
-            }
-        }
-    }
-
-    val directZipLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/zip")
-    ) { uri ->
-        if (uri != null) {
-            val result = GitHubExportService.writeProjectZipToUri(context, uri, activeProject, allProjects)
-            result.onSuccess {
-                onStatusMessage("ZIP Downloaded! Saved ${targetSlug}.zip repository bundle to your phone.")
-            }.onFailure { err ->
-                onStatusMessage("Failed to save ZIP: ${err.localizedMessage}")
-            }
-        }
-    }
+    var isSavingApk by remember { mutableStateOf(false) }
+    var savedApkNotice by rememberSaveable { mutableStateOf<String?>(null) }
 
     Card(
         modifier = modifier
@@ -146,7 +119,7 @@ fun DirectApkAndGitHubBannerCard(
             .testTag("direct_apk_github_banner_card"),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = ForgeSurfaceElevated),
-        border = BorderStroke(1.5.dp, ForgeSuccessGreen.copy(alpha = 0.75f))
+        border = BorderStroke(1.5.dp, ForgeSuccessGreen.copy(alpha = 0.85f))
     ) {
         Column(
             modifier = Modifier
@@ -166,30 +139,31 @@ fun DirectApkAndGitHubBannerCard(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(42.dp)
                             .clip(RoundedCornerShape(10.dp))
-                            .background(ForgeSuccessGreen.copy(alpha = 0.18f))
-                            .border(1.dp, ForgeSuccessGreen.copy(alpha = 0.55f), RoundedCornerShape(10.dp)),
+                            .background(ForgeSuccessGreen.copy(alpha = 0.2f))
+                            .border(1.dp, ForgeSuccessGreen.copy(alpha = 0.6f), RoundedCornerShape(10.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Android,
-                            contentDescription = "Direct APK & GitHub Download",
+                            contentDescription = "Direct APK Download & Install",
                             tint = ForgeSuccessGreen,
                             modifier = Modifier.size(24.dp)
                         )
                     }
                     Column {
                         Text(
-                            text = "Direct Android .APK & GitHub Download Center",
+                            text = "WORLD FORGE AI — Engine APK Download & Install",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = ForgeTextPrimary
                         )
                         Text(
-                            text = "1-Click Direct Phone .APK Download ($apkSizeLabel) · Upload & Download .APK on GitHub Releases",
+                            text = savedApkNotice
+                                ?: "1-Tap Direct Phone APK Download ($apkSizeLabel) · Dedicated APK Install Page & GitHub Upload",
                             style = MaterialTheme.typography.bodySmall,
-                            color = ForgeTextSecondary
+                            color = if (savedApkNotice != null) ForgeSuccessGreen else ForgeTextSecondary
                         )
                     }
                 }
@@ -201,8 +175,22 @@ fun DirectApkAndGitHubBannerCard(
             ) {
                 Button(
                     onClick = {
-                        directApkLauncher.launch("${targetSlug}-v0.1.0.apk")
+                        isSavingApk = true
+                        scope.launch {
+                            val res = GitHubExportService.saveInstalledApkDirectlyToDownloads(
+                                context = context,
+                                fileName = GitHubExportService.DEFAULT_APK_FILENAME
+                            )
+                            isSavingApk = false
+                            res.onSuccess { path ->
+                                savedApkNotice = "✅ Saved to $path! Tap 'APK Install Page' to install."
+                                onStatusMessage("APK Downloaded to $path!")
+                            }.onFailure { err ->
+                                onStatusMessage("Failed to save APK: ${err.localizedMessage}")
+                            }
+                        }
                     },
+                    enabled = !isSavingApk,
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = ForgeSuccessGreen,
@@ -211,57 +199,55 @@ fun DirectApkAndGitHubBannerCard(
                     modifier = Modifier.testTag("banner_direct_apk_download_button")
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Android,
+                        imageVector = Icons.Default.Download,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Download .APK Directly ($apkSizeLabel)",
+                        text = if (isSavingApk) "Downloading APK..." else "1-Tap Download APK ($apkSizeLabel)",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
                 Button(
-                    onClick = onOpenGitHubApkHub,
+                    onClick = onOpenApkInstallPage,
                     shape = RoundedCornerShape(10.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = ForgeElectricBlue,
                         contentColor = Color.White
                     ),
-                    modifier = Modifier.testTag("banner_github_apk_hub_button")
+                    modifier = Modifier.testTag("banner_open_apk_install_page_button")
                 ) {
                     Icon(
-                        imageVector = Icons.Default.CloudUpload,
+                        imageVector = Icons.Default.Android,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "GitHub pe APK Upload / Download",
+                        text = "Open APK Install & Download Page",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
                 OutlinedButton(
-                    onClick = {
-                        directZipLauncher.launch("${targetSlug}.zip")
-                    },
+                    onClick = onOpenGitHubApkHub,
                     shape = RoundedCornerShape(10.dp),
                     border = BorderStroke(1.dp, ForgeBlueLight.copy(alpha = 0.6f)),
-                    modifier = Modifier.testTag("banner_direct_zip_download_button")
+                    modifier = Modifier.testTag("banner_github_apk_hub_button")
                 ) {
                     Icon(
-                        imageVector = Icons.Default.FolderZip,
+                        imageVector = Icons.Default.CloudUpload,
                         contentDescription = null,
                         tint = ForgeBlueLight,
                         modifier = Modifier.size(17.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "Download .ZIP Bundle",
+                        text = "GitHub APK Hub",
                         style = MaterialTheme.typography.labelLarge,
                         color = ForgeTextPrimary
                     )

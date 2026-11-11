@@ -86,6 +86,7 @@ fun AuthScreen(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var statusNotice by remember { mutableStateOf<String?>(null) }
     var showGitHubApkModal by remember { mutableStateOf(false) }
+    var showApkInstallPage by remember { mutableStateOf(false) }
 
     val defaultStarterProject = remember {
         ForgeProject(
@@ -114,6 +115,50 @@ fun AuthScreen(
                 statusNotice = msg
             }
         )
+    }
+
+    if (showApkInstallPage) {
+        androidx.activity.compose.BackHandler {
+            showApkInstallPage = false
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ForgeCharcoalBg)
+                .engineGridBackground()
+                .verticalScroll(rememberScrollState())
+                .padding(16.dp),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 720.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                if (statusNotice != null) {
+                    Surface(
+                        color = ForgeSuccessGreen.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(10.dp),
+                        border = BorderStroke(1.dp, ForgeSuccessGreen.copy(alpha = 0.6f))
+                    ) {
+                        Text(
+                            text = statusNotice!!,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = ForgeSuccessGreen,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
+                }
+                ApkInstallDownloadPage(
+                    activeProject = defaultStarterProject,
+                    allProjects = listOf(defaultStarterProject),
+                    onPostStatusMessage = { statusNotice = it },
+                    onReturnToDashboard = { showApkInstallPage = false }
+                )
+            }
+        }
+        return
     }
 
     Box(
@@ -184,6 +229,7 @@ fun AuthScreen(
                     DirectApkAndGitHubBannerCard(
                         activeProject = defaultStarterProject,
                         allProjects = listOf(defaultStarterProject),
+                        onOpenApkInstallPage = { showApkInstallPage = true },
                         onOpenGitHubApkHub = { showGitHubApkModal = true },
                         onStatusMessage = { statusNotice = it }
                     )

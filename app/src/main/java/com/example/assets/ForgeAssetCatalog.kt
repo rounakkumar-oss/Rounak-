@@ -4,6 +4,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.AddBox
+import androidx.compose.material.icons.filled.Android
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Code
@@ -26,6 +27,7 @@ object ForgeAssetCatalog {
 
     fun iconForDestination(destination: ForgeNavDestination): ImageVector = when (destination) {
         ForgeNavDestination.DASHBOARD -> Icons.Default.Dashboard
+        ForgeNavDestination.APK_DOWNLOAD_INSTALL -> Icons.Default.Android
         ForgeNavDestination.MY_PROJECTS -> Icons.Default.FolderOpen
         ForgeNavDestination.CREATE_NEW_GAME -> Icons.Default.AddBox
         ForgeNavDestination.AI_WORLD_GENERATOR -> Icons.Default.Public
