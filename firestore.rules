@@ -1,0 +1,90 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidGameType(val) {
+      return val is string && val in ['Open World', 'Racing', 'Simulation', 'Adventure', 'Survival', 'Custom Game'];
+    }
+
+    function isValidTargetPlatform(val) {
+      return val is string && val in ['Web', 'Android', 'Both'];
+    }
+
+    function isValidGraphicsPreset(val) {
+      return val is string && val in ['Very Low', 'Low', 'Medium', 'High', 'Ultra'];
+    }
+
+    function isValidOrientation(val) {
+      return val is string && val in ['Landscape', 'Portrait'];
+    }
+
+    function isValidProject(data) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.name is string && data.name.size() >= 1 && data.name.size() <= 100 &&
+             data.description is string && data.description.size() <= 500 &&
+             isValidGameType(data.gameType) &&
+             isValidTargetPlatform(data.targetPlatform) &&
+             isValidGraphicsPreset(data.graphicsPreset) &&
+             isValidOrientation(data.orientation) &&
+             data.engineVersion is string && data.engineVersion.size() >= 1 && data.engineVersion.size() <= 32 &&
+             data.sceneCount is int && data.sceneCount >= 0 && data.sceneCount <= 10000 &&
+             data.assetCount is int && data.assetCount >= 0 && data.assetCount <= 100000 &&
+             data.scriptCount is int && data.scriptCount >= 0 && data.scriptCount <= 100000 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    match /users/{userId}/projects/{projectId} {
+      allow get: if isSignedIn() && request.auth.uid == userId && isValidId(projectId);
+      allow list: if isSignedIn() && request.auth.uid == userId;
+
+      allow create: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(projectId) &&
+                       incoming().keys().hasAll([
+                         'userId', 'name', 'description', 'gameType', 'targetPlatform',
+                         'graphicsPreset', 'orientation', 'engineVersion',
+                         'sceneCount', 'assetCount', 'scriptCount', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'name', 'description', 'gameType', 'targetPlatform',
+                         'graphicsPreset', 'orientation', 'engineVersion',
+                         'sceneCount', 'assetCount', 'scriptCount', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidProject(incoming());
+
+      allow update: if isSignedIn() &&
+                       request.auth.uid == userId &&
+                       isValidId(projectId) &&
+                       isValidProject(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'name', 'description', 'gameType', 'targetPlatform',
+                         'graphicsPreset', 'orientation', 'engineVersion',
+                         'sceneCount', 'assetCount', 'scriptCount', 'updatedAt'
+                       ]);
+
+      allow delete: if isSignedIn() && request.auth.uid == userId && isValidId(projectId);
+    }
+  }
+}

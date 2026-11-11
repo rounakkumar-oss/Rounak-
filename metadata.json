@@ -1,0 +1,6 @@
+{
+  "name": "World Forge AI",
+  "description": "AI-powered Open World Game Development Platform — Step 01 Foundation & Main Dashboard",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

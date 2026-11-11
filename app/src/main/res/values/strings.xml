@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">World Forge AI</string>
+    <string name="platform_tagline">AI-Powered Open World Game Development Platform</string>
+    <string name="step_01_badge">STEP 01 · FOUNDATION</string>
+    <string name="create_new_project">Create New Project</string>
+    <string name="recent_projects">Recent Projects</string>
+    <string name="my_projects">My Projects</string>
+    <string name="quick_access_tools">Quick Access Engine Tools</string>
+    <string name="dev_status_roadmap">Platform Development Status &amp; Roadmap</string>
+    <string name="sign_in_with_google">Sign in with Google</string>
+</resources>

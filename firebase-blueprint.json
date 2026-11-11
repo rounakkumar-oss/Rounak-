@@ -1,0 +1,112 @@
+{
+  "entities": {
+    "Project": {
+      "title": "Project",
+      "description": "A World Forge AI game development project configuration and metadata",
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Owner UID from Firebase Auth"
+        },
+        "name": {
+          "type": "string",
+          "description": "Project display name (1 to 100 characters)"
+        },
+        "description": {
+          "type": "string",
+          "description": "Project description (0 to 500 characters)"
+        },
+        "gameType": {
+          "type": "string",
+          "enum": [
+            "Open World",
+            "Racing",
+            "Simulation",
+            "Adventure",
+            "Survival",
+            "Custom Game"
+          ],
+          "description": "Type of game project"
+        },
+        "targetPlatform": {
+          "type": "string",
+          "enum": [
+            "Web",
+            "Android",
+            "Both"
+          ],
+          "description": "Target build and deployment platform"
+        },
+        "graphicsPreset": {
+          "type": "string",
+          "enum": [
+            "Very Low",
+            "Low",
+            "Medium",
+            "High",
+            "Ultra"
+          ],
+          "description": "Rendering graphics quality preset"
+        },
+        "orientation": {
+          "type": "string",
+          "enum": [
+            "Landscape",
+            "Portrait"
+          ],
+          "description": "Primary viewport orientation"
+        },
+        "engineVersion": {
+          "type": "string",
+          "description": "World Forge AI Engine schema version"
+        },
+        "sceneCount": {
+          "type": "integer",
+          "description": "Number of scenes configured in project"
+        },
+        "assetCount": {
+          "type": "integer",
+          "description": "Number of assets linked in project"
+        },
+        "scriptCount": {
+          "type": "integer",
+          "description": "Number of visual/AI scripts in project"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of creation (FieldValue.serverTimestamp())"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp of last modification (FieldValue.serverTimestamp())"
+        }
+      },
+      "required": [
+        "userId",
+        "name",
+        "description",
+        "gameType",
+        "targetPlatform",
+        "graphicsPreset",
+        "orientation",
+        "engineVersion",
+        "sceneCount",
+        "assetCount",
+        "scriptCount",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/projects/{projectId}": {
+      "schema": {
+        "$ref": "#/entities/Project"
+      },
+      "description": "Per-user game development projects managed by World Forge AI"
+    }
+  }
+}
