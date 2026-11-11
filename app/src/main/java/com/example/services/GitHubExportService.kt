@@ -422,8 +422,14 @@ object GitHubExportService {
         }.toString(2)
     }
 
-    private fun buildGitHubActionsApkWorkflow(projectName: String, ownerAndRepo: String? = null): String {
+    private fun buildGitHubActionsApkWorkflow(
+        projectName: String,
+        ownerAndRepo: String? = null,
+        releaseApkUrl: String? = null
+    ): String {
         val repoRef = ownerAndRepo ?: "world-forge-ai"
+        val fallbackApkUrl = releaseApkUrl
+            ?: "https://github.com/$repoRef/releases/latest/download/$DEFAULT_APK_FILENAME"
         return """
             name: Build & Release WORLD FORGE AI Android APK
             on:
@@ -435,29 +441,56 @@ object GitHubExportService {
               contents: write
 
             jobs:
-              worldforge-apk-release-pipeline:
-                name: Verify & Package WORLD FORGE AI Engine ($projectName)
+              build-android-apk:
+                name: Compile WORLD FORGE AI Engine APK ($projectName)
                 runs-on: ubuntu-latest
                 steps:
                   - name: Checkout Repository
                     uses: actions/checkout@v4
 
-                  - name: Verify World Forge Engine Manifest & Scene
-                    run: |
-                      echo "Building WORLD FORGE AI Project: $projectName ($repoRef)"
-                      ls -la
-                      cat worldforge.project.json
+                  - name: Set up JDK 21
+                    if: hashFiles('settings.gradle.kts') != ''
+                    uses: actions/setup-java@v4
+                    with:
+                      distribution: 'temurin'
+                      java-version: '21'
 
-                  - name: Upload World Forge Engine Package Artifact
+                  - name: Set up Android SDK
+                    if: hashFiles('settings.gradle.kts') != ''
+                    uses: android-actions/setup-android@v3
+
+                  - name: Accept Android SDK Licenses
+                    if: hashFiles('settings.gradle.kts') != ''
+                    run: |
+                      yes | "$${"{ANDROID_HOME}"}/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+                  - name: Setup Gradle 9.3.1
+                    if: hashFiles('settings.gradle.kts') != ''
+                    uses: gradle/actions/setup-gradle@v4
+                    with:
+                      gradle-version: '9.3.1'
+
+                  - name: Compile WORLD FORGE AI
+                    run: |
+                      mkdir -p dist-apk
+                      if [ -f "settings.gradle.kts" ]; then
+                        if [ ! -f "debug.keystore" ]; then
+                          keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+                        fi
+                        gradle :app:assembleDebug --no-daemon --no-configuration-cache --stacktrace
+                        cp app/build/outputs/apk/debug/app-debug.apk dist-apk/$DEFAULT_APK_FILENAME
+                      else
+                        curl -fsSL -L "$fallbackApkUrl" -o dist-apk/$DEFAULT_APK_FILENAME
+                      fi
+                      unzip -t dist-apk/$DEFAULT_APK_FILENAME > /dev/null
+                      ls -lh dist-apk/$DEFAULT_APK_FILENAME
+
+                  - name: Upload APK to GitHub Actions Artifacts
                     uses: actions/upload-artifact@v4
                     with:
-                      name: WorldForgeAI-Engine-Bundle
-                      path: |
-                        worldforge.project.json
-                        README.md
-                        install-apk.html
-                        apk/
-                        scenes/
+                      name: WorldForgeAI-Engine-APK
+                      path: dist-apk/$DEFAULT_APK_FILENAME
+                      if-no-files-found: error
         """.trimIndent() + "\n"
     }
 
@@ -713,8 +746,15 @@ object GitHubExportService {
                 token = cleanToken,
                 fullName = fullName,
                 filePath = ".github/workflows/build-android-apk.yml",
-                content = buildGitHubActionsApkWorkflow(activeProject.name, fullName),
-                commitMessage = "Add GitHub Actions Android APK workflow"
+                content = buildGitHubActionsApkWorkflow(activeProject.name, fullName, uploadedApkUrl),
+                commitMessage = "Fix GitHub Actions Android APK build workflow (JDK 21 + Gradle 9.3.1)"
+            )
+
+            // Trigger workflow_dispatch so GitHub Actions immediately runs the fixed workflow
+            triggerGitHubWorkflowDispatch(
+                token = cleanToken,
+                fullName = fullName,
+                defaultBranch = defaultBranch
             )
 
             val zipUrl = "https://github.com/$fullName/archive/refs/heads/$defaultBranch.zip"
@@ -872,6 +912,32 @@ object GitHubExportService {
             conn.responseCode
         } catch (e: Exception) {
             Log.w(TAG, "Non-fatal error committing $filePath: ${e.message}")
+        }
+    }
+
+    private fun triggerGitHubWorkflowDispatch(
+        token: String,
+        fullName: String,
+        defaultBranch: String
+    ) {
+        try {
+            val dispatchBody = JSONObject().apply {
+                put("ref", defaultBranch)
+            }.toString()
+            val conn = (URL("https://api.github.com/repos/$fullName/actions/workflows/build-android-apk.yml/dispatches").openConnection() as HttpURLConnection).apply {
+                requestMethod = "POST"
+                connectTimeout = 10000
+                readTimeout = 10000
+                doOutput = true
+                setRequestProperty("Accept", "application/vnd.github+json")
+                setRequestProperty("Authorization", "Bearer $token")
+                setRequestProperty("X-GitHub-Api-Version", "2022-11-28")
+                setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            }
+            conn.outputStream.use { it.write(dispatchBody.toByteArray(Charsets.UTF_8)) }
+            conn.responseCode
+        } catch (e: Exception) {
+            Log.w(TAG, "Non-fatal workflow dispatch trigger notice: ${e.message}")
         }
     }
 

@@ -19,19 +19,23 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21 (Required by Gradle 9.3.1 & AGP 9.1.1)
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Setup Gradle
+      - name: Accept Android SDK Licenses
+        run: |
+          yes | "${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+
+      - name: Setup Gradle 9.3.1
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.11.1'
+          gradle-version: '9.3.1'
 
       - name: Ensure debug.keystore exists for APK signing
         run: |
@@ -47,19 +51,71 @@ jobs:
               -dname "CN=Android Debug,O=Android,C=US"
           fi
 
-      - name: Ensure google-services.json exists
+      - name: Ensure google-services.json & firebase_applet_config.xml exist for CI
         run: |
           if [ ! -f "app/google-services.json" ]; then
-            echo '{"project_info":{"project_number":"000000000000","project_id":"world-forge-ai-placeholder","storage_bucket":"world-forge-ai-placeholder.appspot.com"},"client":[{"client_info":{"mobilesdk_app_id":"1:000000000000:android:0000000000000000","android_client_info":{"package_name":"com.aistudio.worldforge.wfai01"}},"api_key":[{"current_key":"AIzaSyPlaceholderKeyForCIBuildOnly0000000"}]}],"configuration_version":"1"}' > app/google-services.json
+            cat << 'EOF' > app/google-services.json
+          {
+            "project_info": {
+              "project_number": "369440577631",
+              "project_id": "gen-lang-client-0711975910",
+              "storage_bucket": "gen-lang-client-0711975910.firebasestorage.app"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:369440577631:android:76a727cfbb974f63",
+                  "android_client_info": {
+                    "package_name": "com.aistudio.worldforge.wfai01"
+                  }
+                },
+                "oauth_client": [
+                  {
+                    "client_id": "369440577631-ciwebclientplaceholder.apps.googleusercontent.com",
+                    "client_type": 3
+                  }
+                ],
+                "api_key": [
+                  {
+                    "current_key": "AIzaSyPlaceholderKeyForCIBuildOnly0000000"
+                  }
+                ],
+                "services": {
+                  "appinvite_service": {
+                    "other_platform_oauth_client": [
+                      {
+                        "client_id": "369440577631-ciwebclientplaceholder.apps.googleusercontent.com",
+                        "client_type": 3
+                      }
+                    ]
+                  }
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          EOF
           fi
 
-      - name: Build Debug APK with Gradle
-        run: gradle :app:assembleDebug --no-daemon
+          mkdir -p app/src/main/res/values
+          if [ ! -f "app/src/main/res/values/firebase_applet_config.xml" ]; then
+            cat << 'EOF' > app/src/main/res/values/firebase_applet_config.xml
+          <?xml version="1.0" encoding="utf-8" standalone="no"?>
+          <resources>
+              <string name="firestore_database_id" translatable="false">ai-studio-android-worldfor-76a727cf-bb97-4f63-96af-83cf2314820a</string>
+          </resources>
+          EOF
+          fi
 
-      - name: Prepare Named Engine APK
+      - name: Compile WORLD FORGE AI
+        run: |
+          gradle :app:assembleDebug --no-daemon --no-configuration-cache --stacktrace
+
+      - name: Verify & Prepare Named Engine APK
         run: |
           mkdir -p dist-apk
           cp app/build/outputs/apk/debug/app-debug.apk dist-apk/WorldForgeAI-Engine-v0.1.0.apk
+          unzip -t dist-apk/WorldForgeAI-Engine-v0.1.0.apk > /dev/null
           ls -lh dist-apk/WorldForgeAI-Engine-v0.1.0.apk
 
       - name: Upload APK to GitHub Actions Artifacts

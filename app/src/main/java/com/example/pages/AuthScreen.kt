@@ -23,7 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.Code
-import androidx.compose.material.icons.filled.Login
+import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.ViewInAr
@@ -312,7 +312,7 @@ fun AuthScreen(
                             Text("Authenticating Studio Session...", style = MaterialTheme.typography.labelLarge)
                         } else {
                             Icon(
-                                imageVector = Icons.Default.Login,
+                                imageVector = Icons.AutoMirrored.Filled.Login,
                                 contentDescription = null,
                                 modifier = Modifier.size(20.dp)
                             )
