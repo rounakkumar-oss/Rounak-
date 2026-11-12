@@ -274,7 +274,9 @@ fun GitHubExportDialog(
         else "world-forge-ai-game"
     }
 
-    var repoNameInput by rememberSaveable(targetSlug) { mutableStateOf(targetSlug) }
+    var repoNameInput by rememberSaveable {
+        mutableStateOf(GitHubExportService.DEFAULT_GITHUB_REPO)
+    }
     var githubTokenInput by rememberSaveable { mutableStateOf("") }
     var createAsPublicRepo by rememberSaveable { mutableStateOf(true) }
     var uploadApkToGitHubRelease by rememberSaveable { mutableStateOf(true) }
@@ -285,7 +287,9 @@ fun GitHubExportDialog(
     var existingGithubUsername by rememberSaveable {
         mutableStateOf(GitHubExportService.getSavedGitHubUsername(context))
     }
-    var existingRepoName by rememberSaveable(targetSlug) { mutableStateOf(targetSlug) }
+    var existingRepoName by rememberSaveable {
+        mutableStateOf(GitHubExportService.DEFAULT_GITHUB_REPO)
+    }
     var existingBranchName by rememberSaveable { mutableStateOf("main") }
 
     var showReadmePreview by remember { mutableStateOf(false) }

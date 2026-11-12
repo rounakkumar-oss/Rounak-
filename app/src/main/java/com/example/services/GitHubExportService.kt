@@ -51,10 +51,13 @@ object GitHubExportService {
     private const val PREFS_NAME = "world_forge_github_prefs"
     private const val KEY_GITHUB_USERNAME = "github_username"
     const val DEFAULT_APK_FILENAME = "WorldForgeAI-Engine-v0.1.0.apk"
+    const val DEFAULT_GITHUB_USERNAME = "rounakkumar-oss"
+    const val DEFAULT_GITHUB_REPO = "Rounak-"
 
     fun getSavedGitHubUsername(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getString(KEY_GITHUB_USERNAME, "") ?: ""
+        val saved = prefs.getString(KEY_GITHUB_USERNAME, DEFAULT_GITHUB_USERNAME) ?: DEFAULT_GITHUB_USERNAME
+        return saved.ifBlank { DEFAULT_GITHUB_USERNAME }
     }
 
     fun saveGitHubUsername(context: Context, username: String) {
@@ -427,7 +430,7 @@ object GitHubExportService {
         ownerAndRepo: String? = null,
         releaseApkUrl: String? = null
     ): String {
-        val repoRef = ownerAndRepo ?: "world-forge-ai"
+        val repoRef = ownerAndRepo ?: "$DEFAULT_GITHUB_USERNAME/$DEFAULT_GITHUB_REPO"
         val fallbackApkUrl = releaseApkUrl
             ?: "https://github.com/$repoRef/releases/latest/download/$DEFAULT_APK_FILENAME"
         return """
@@ -443,44 +446,76 @@ object GitHubExportService {
             jobs:
               build-android-apk:
                 name: Compile WORLD FORGE AI Engine APK ($projectName)
+                if: "!contains(github.event.head_commit.message, '[skip ci]')"
                 runs-on: ubuntu-latest
                 steps:
                   - name: Checkout Repository
                     uses: actions/checkout@v4
+                    with:
+                      fetch-depth: 0
 
-                  - name: Set up JDK 21
+                  - name: Set up JDK 21 (Temurin)
                     if: hashFiles('settings.gradle.kts') != ''
-                    uses: actions/setup-java@v4
+                    uses: actions/setup-java@v5
                     with:
                       distribution: 'temurin'
                       java-version: '21'
 
-                  - name: Set up Android SDK
-                    if: hashFiles('settings.gradle.kts') != ''
-                    uses: android-actions/setup-android@v3
-
-                  - name: Accept Android SDK Licenses
+                  - name: Set up Android SDK & Command-Line Tools (Ubuntu 24/26 Compatible)
                     if: hashFiles('settings.gradle.kts') != ''
                     run: |
-                      yes | "$${"{ANDROID_HOME}"}/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+                      set -e
+                      if [ -d "/usr/local/lib/android/sdk" ]; then
+                        SDK_ROOT="/usr/local/lib/android/sdk"
+                        sudo chmod -R a+rwx "$${"SDK_ROOT"}" || true
+                      else
+                        SDK_ROOT="$${"HOME"}/android-sdk"
+                        mkdir -p "$${"SDK_ROOT"}"
+                      fi
+                      echo "ANDROID_HOME=$${"SDK_ROOT"}" >> "$${"GITHUB_ENV"}"
+                      echo "ANDROID_SDK_ROOT=$${"SDK_ROOT"}" >> "$${"GITHUB_ENV"}"
+                      if [ ! -f "$${"SDK_ROOT"}/cmdline-tools/latest/bin/sdkmanager" ]; then
+                        mkdir -p "$${"SDK_ROOT"}/cmdline-tools"
+                        curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o /tmp/cmdtools.zip
+                        rm -rf /tmp/cmdtools-extract "$${"SDK_ROOT"}/cmdline-tools/latest"
+                        mkdir -p /tmp/cmdtools-extract
+                        unzip -q /tmp/cmdtools.zip -d /tmp/cmdtools-extract
+                        mv /tmp/cmdtools-extract/cmdline-tools "$${"SDK_ROOT"}/cmdline-tools/latest"
+                        rm -rf /tmp/cmdtools.zip /tmp/cmdtools-extract
+                      fi
+                      echo "$${"SDK_ROOT"}/cmdline-tools/latest/bin" >> "$${"GITHUB_PATH"}"
+                      echo "$${"SDK_ROOT"}/platform-tools" >> "$${"GITHUB_PATH"}"
+                      mkdir -p "$${"SDK_ROOT"}/licenses"
+                      printf "\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n" > "$${"SDK_ROOT"}/licenses/android-sdk-license"
+                      printf "\n84831b9409646a918e30573bab4c9c91346d8abd\n504667f4c0de7af1a06de9f4b1727b84351f2910\n" > "$${"SDK_ROOT"}/licenses/android-sdk-preview-license"
+                      yes | "$${"SDK_ROOT"}/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$${"SDK_ROOT"}" --licenses > /dev/null 2>&1 || true
 
-                  - name: Setup Gradle 9.3.1
+                  - name: Set up Gradle 9.3.1
                     if: hashFiles('settings.gradle.kts') != ''
-                    uses: gradle/actions/setup-gradle@v4
-                    with:
-                      gradle-version: '9.3.1'
+                    run: |
+                      set -e
+                      if ! command -v gradle >/dev/null 2>&1 || ! gradle --version | grep -q "9.3.1"; then
+                        curl -fsSL https://services.gradle.org/distributions/gradle-9.3.1-bin.zip -o /tmp/gradle-9.3.1-bin.zip
+                        mkdir -p "$${"HOME"}/gradle-dist"
+                        unzip -q -o /tmp/gradle-9.3.1-bin.zip -d "$${"HOME"}/gradle-dist"
+                        rm -f /tmp/gradle-9.3.1-bin.zip
+                        echo "$${"HOME"}/gradle-dist/gradle-9.3.1/bin" >> "$${"GITHUB_PATH"}"
+                      fi
 
                   - name: Compile WORLD FORGE AI
                     run: |
-                      mkdir -p dist-apk
+                      set -e
+                      mkdir -p dist-apk apk
                       if [ -f "settings.gradle.kts" ]; then
                         if [ ! -f "debug.keystore" ]; then
                           keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
                         fi
                         gradle :app:assembleDebug --no-daemon --no-configuration-cache --stacktrace
                         cp app/build/outputs/apk/debug/app-debug.apk dist-apk/$DEFAULT_APK_FILENAME
+                        cp app/build/outputs/apk/debug/app-debug.apk apk/$DEFAULT_APK_FILENAME
                       else
                         curl -fsSL -L "$fallbackApkUrl" -o dist-apk/$DEFAULT_APK_FILENAME
+                        cp dist-apk/$DEFAULT_APK_FILENAME apk/$DEFAULT_APK_FILENAME
                       fi
                       unzip -t dist-apk/$DEFAULT_APK_FILENAME > /dev/null
                       ls -lh dist-apk/$DEFAULT_APK_FILENAME
@@ -491,6 +526,17 @@ object GitHubExportService {
                       name: WorldForgeAI-Engine-APK
                       path: dist-apk/$DEFAULT_APK_FILENAME
                       if-no-files-found: error
+
+                  - name: Publish APK to GitHub Releases
+                    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+                    env:
+                      GH_TOKEN: $${"{{"} secrets.GITHUB_TOKEN ${"}}"}
+                    run: |
+                      if gh release view v0.1.0-latest --repo "$${"{GITHUB_REPOSITORY}"}" >/dev/null 2>&1; then
+                        gh release upload v0.1.0-latest dist-apk/$DEFAULT_APK_FILENAME --repo "$${"{GITHUB_REPOSITORY}"}" --clobber
+                      else
+                        gh release create v0.1.0-latest dist-apk/$DEFAULT_APK_FILENAME --repo "$${"{GITHUB_REPOSITORY}"}" --title "WORLD FORGE AI Engine — Android APK (Latest Build)" --notes "Tap **$DEFAULT_APK_FILENAME** under Assets to download and install." --latest
+                      fi
         """.trimIndent() + "\n"
     }
 
@@ -513,6 +559,12 @@ object GitHubExportService {
             .replace(Regex("[^a-z0-9]+"), "-")
             .trim('-')
         return cleaned.ifEmpty { "world-forge-ai-game" }
+    }
+
+    fun sanitizeExplicitRepoName(name: String): String {
+        val cleaned = name.trim()
+            .replace(Regex("[^A-Za-z0-9._-]+"), "-")
+        return cleaned.ifEmpty { DEFAULT_GITHUB_REPO }
     }
 
     fun writeContentToUri(context: Context, uri: Uri, content: String): Result<Unit> {
@@ -603,7 +655,7 @@ object GitHubExportService {
                 IllegalArgumentException("GitHub Token (ghp_...) zaroori hai. 'Get Token' dabayein ya upar '1-Tap Download APK to Phone' use karein.")
             )
         }
-        val cleanRepoName = sanitizeRepoSlug(repoName)
+        val cleanRepoName = sanitizeExplicitRepoName(repoName)
 
         try {
             // Step 1: Verify token & fetch authenticated GitHub user login

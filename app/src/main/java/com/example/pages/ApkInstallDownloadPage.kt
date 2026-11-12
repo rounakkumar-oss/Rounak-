@@ -120,8 +120,13 @@ fun ApkInstallDownloadPage(
     var downloadedApkPath by rememberSaveable { mutableStateOf<String?>(null) }
     var showInstallerPanel by rememberSaveable { mutableStateOf(false) }
 
-    // GitHub Direct Push State
-    var repoNameInput by rememberSaveable(targetSlug) { mutableStateOf(targetSlug) }
+    // GitHub Direct Push State (Defaults to user's rounakkumar-oss/Rounak- repo)
+    var githubOwnerInput by rememberSaveable {
+        mutableStateOf(GitHubExportService.getSavedGitHubUsername(context))
+    }
+    var repoNameInput by rememberSaveable {
+        mutableStateOf(GitHubExportService.DEFAULT_GITHUB_REPO)
+    }
     var githubTokenInput by rememberSaveable { mutableStateOf("") }
     var isPushingToGitHub by remember { mutableStateOf(false) }
     var pushError by remember { mutableStateOf<String?>(null) }
@@ -641,19 +646,128 @@ fun ApkInstallDownloadPage(
 
                 HorizontalDivider(color = ForgeCardBorder)
 
-                OutlinedTextField(
-                    value = repoNameInput,
-                    onValueChange = { repoNameInput = it },
-                    label = { Text("GitHub Repository Name") },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = ForgeElectricBlue,
-                        unfocusedBorderColor = ForgeCardBorder,
-                        focusedTextColor = ForgeTextPrimary,
-                        unfocusedTextColor = ForgeTextPrimary
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
+                // Quick 1-Tap Direct GitHub APK Links for rounakkumar-oss/Rounak-
+                val activeOwner = githubOwnerInput.trim().ifBlank { GitHubExportService.DEFAULT_GITHUB_USERNAME }
+                val activeRepo = repoNameInput.trim().ifBlank { GitHubExportService.DEFAULT_GITHUB_REPO }
+                Surface(
+                    color = ForgeSurfaceElevated,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, ForgeSuccessGreen.copy(alpha = 0.6f))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = "Direct GitHub Links ($activeOwner/$activeRepo):",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = ForgeSuccessGreen
+                        )
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Button(
+                                onClick = {
+                                    GitHubExportService.openBrowserUrl(
+                                        context,
+                                        "https://github.com/$activeOwner/$activeRepo/releases/latest/download/$apkFileName"
+                                    )
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = ForgeSuccessGreen),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.testTag("apk_page_quick_github_apk_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Android,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Download APK from GitHub", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    GitHubExportService.openBrowserUrl(
+                                        context,
+                                        "https://github.com/$activeOwner/$activeRepo/releases"
+                                    )
+                                },
+                                border = BorderStroke(1.dp, ForgeElectricBlue),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                    contentDescription = null,
+                                    tint = ForgeBlueLight,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Open GitHub Releases", color = ForgeTextPrimary)
+                            }
+
+                            OutlinedButton(
+                                onClick = {
+                                    GitHubExportService.openBrowserUrl(
+                                        context,
+                                        "https://github.com/$activeOwner/$activeRepo/actions"
+                                    )
+                                },
+                                border = BorderStroke(1.dp, ForgeVioletLight),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                    contentDescription = null,
+                                    tint = ForgeVioletLight,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Open GitHub Actions", color = ForgeTextPrimary)
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = githubOwnerInput,
+                        onValueChange = {
+                            githubOwnerInput = it
+                            GitHubExportService.saveGitHubUsername(context, it)
+                        },
+                        label = { Text("GitHub Username") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = ForgeElectricBlue,
+                            unfocusedBorderColor = ForgeCardBorder,
+                            focusedTextColor = ForgeTextPrimary,
+                            unfocusedTextColor = ForgeTextPrimary
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    OutlinedTextField(
+                        value = repoNameInput,
+                        onValueChange = { repoNameInput = it },
+                        label = { Text("Repository Name") },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = ForgeElectricBlue,
+                            unfocusedBorderColor = ForgeCardBorder,
+                            focusedTextColor = ForgeTextPrimary,
+                            unfocusedTextColor = ForgeTextPrimary
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
