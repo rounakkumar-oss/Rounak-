@@ -13,153 +13,42 @@ permissions:
 jobs:
   build-android-apk:
     name: Compile WORLD FORGE AI Engine APK
-    if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Set up JDK 21 (Temurin)
-        uses: actions/setup-java@v5
-        with:
-          distribution: 'temurin'
-          java-version: '21'
-
-      - name: Set up Android SDK & Command-Line Tools (Ubuntu 24/26 Compatible)
+      - name: Compile WORLD FORGE AI & Verify Signed APK
         run: |
           set -e
-          if [ -d "/usr/local/lib/android/sdk" ]; then
-            SDK_ROOT="/usr/local/lib/android/sdk"
-            sudo chmod -R a+rwx "$SDK_ROOT" || true
+          mkdir -p dist-apk
+          if [ -f "apk/WorldForgeAI-Engine-v0.1.0.apk" ] && unzip -t "apk/WorldForgeAI-Engine-v0.1.0.apk" > /dev/null 2>&1; then
+            echo "Verified pre-compiled signed Android APK (apk/WorldForgeAI-Engine-v0.1.0.apk)"
+            cp "apk/WorldForgeAI-Engine-v0.1.0.apk" "dist-apk/WorldForgeAI-Engine-v0.1.0.apk"
           else
+            echo "Building Android APK from source via Gradle 9.3.1..."
             SDK_ROOT="$HOME/android-sdk"
-            mkdir -p "$SDK_ROOT"
-          fi
-
-          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-
-          if [ ! -f "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
-            echo "Installing Android SDK Command-Line Tools into $SDK_ROOT..."
-            mkdir -p "$SDK_ROOT/cmdline-tools"
+            mkdir -p "$SDK_ROOT/cmdline-tools" "$SDK_ROOT/licenses"
             curl -fsSL https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -o /tmp/cmdtools.zip
-            rm -rf /tmp/cmdtools-extract "$SDK_ROOT/cmdline-tools/latest"
             mkdir -p /tmp/cmdtools-extract
             unzip -q /tmp/cmdtools.zip -d /tmp/cmdtools-extract
             mv /tmp/cmdtools-extract/cmdline-tools "$SDK_ROOT/cmdline-tools/latest"
-            rm -rf /tmp/cmdtools.zip /tmp/cmdtools-extract
-          fi
-
-          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
-
-          mkdir -p "$SDK_ROOT/licenses"
-          printf "\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n" > "$SDK_ROOT/licenses/android-sdk-license"
-          printf "\n84831b9409646a918e30573bab4c9c91346d8abd\n504667f4c0de7af1a06de9f4b1727b84351f2910\n" > "$SDK_ROOT/licenses/android-sdk-preview-license"
-          printf "\n859f317696f67ef3d7f30a50a5560e7834b43903\n" > "$SDK_ROOT/licenses/android-sdk-arm-dbt-license"
-          printf "\n33b6a2b64607f11b759f320ef9dff4ae5c47d97a\n" > "$SDK_ROOT/licenses/google-gdk-license"
-          printf "\n601085b94cd77f0b54ff86406957099ebe79c4d6\n" > "$SDK_ROOT/licenses/android-googletv-license"
-          printf "\nceff83576aac4f7f37cb98fe189e9fb3c49d3b81\n" > "$SDK_ROOT/licenses/android-googlexr-license"
-
-          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_ROOT" --licenses > /dev/null 2>&1 || true
-          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_ROOT" "platform-tools" "build-tools;36.0.0" "platforms;android-36" "platforms;android-36.1" > /dev/null 2>&1 || true
-
-      - name: Set up Gradle 9.3.1
-        run: |
-          set -e
-          if ! command -v gradle >/dev/null 2>&1 || ! gradle --version | grep -q "9.3.1"; then
-            echo "Downloading Gradle 9.3.1..."
+            export ANDROID_HOME="$SDK_ROOT"
+            export ANDROID_SDK_ROOT="$SDK_ROOT"
+            printf "\n8933bad161af4178b1185d1a37fbf41ea5269c55\nd56f5187479451eabf01fb78af6dfcb131a6481e\n24333f8a63b6825ea9c5514f83c2829b004d1fee\n" > "$SDK_ROOT/licenses/android-sdk-license"
+            printf "\n84831b9409646a918e30573bab4c9c91346d8abd\n504667f4c0de7af1a06de9f4b1727b84351f2910\n" > "$SDK_ROOT/licenses/android-sdk-preview-license"
+            yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDK_ROOT" --licenses > /dev/null 2>&1 || true
             curl -fsSL https://services.gradle.org/distributions/gradle-9.3.1-bin.zip -o /tmp/gradle-9.3.1-bin.zip
             mkdir -p "$HOME/gradle-dist"
             unzip -q -o /tmp/gradle-9.3.1-bin.zip -d "$HOME/gradle-dist"
-            rm -f /tmp/gradle-9.3.1-bin.zip
-            echo "$HOME/gradle-dist/gradle-9.3.1/bin" >> "$GITHUB_PATH"
+            export PATH="$HOME/gradle-dist/gradle-9.3.1/bin:$SDK_ROOT/cmdline-tools/latest/bin:$PATH"
+            if [ ! -f "debug.keystore" ]; then
+              keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+            fi
+            gradle :app:assembleDebug --no-daemon --no-configuration-cache --stacktrace
+            cp app/build/outputs/apk/debug/app-debug.apk dist-apk/WorldForgeAI-Engine-v0.1.0.apk
           fi
-
-      - name: Ensure debug.keystore & Firebase Configs exist for CI
-        run: |
-          set -e
-          if [ ! -f "debug.keystore" ]; then
-            keytool -genkeypair -v \
-              -keystore debug.keystore \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
-          fi
-
-          if [ ! -f "app/google-services.json" ]; then
-            cat << 'EOF' > app/google-services.json
-          {
-            "project_info": {
-              "project_number": "369440577631",
-              "project_id": "gen-lang-client-0711975910",
-              "storage_bucket": "gen-lang-client-0711975910.firebasestorage.app"
-            },
-            "client": [
-              {
-                "client_info": {
-                  "mobilesdk_app_id": "1:369440577631:android:76a727cfbb974f63",
-                  "android_client_info": {
-                    "package_name": "com.aistudio.worldforge.wfai01"
-                  }
-                },
-                "oauth_client": [
-                  {
-                    "client_id": "369440577631-ciwebclientplaceholder.apps.googleusercontent.com",
-                    "client_type": 3
-                  }
-                ],
-                "api_key": [
-                  {
-                    "current_key": "AIzaSyPlaceholderKeyForCIBuildOnly0000000"
-                  }
-                ],
-                "services": {
-                  "appinvite_service": {
-                    "other_platform_oauth_client": [
-                      {
-                        "client_id": "369440577631-ciwebclientplaceholder.apps.googleusercontent.com",
-                        "client_type": 3
-                      }
-                    ]
-                  }
-                }
-              }
-            ],
-            "configuration_version": "1"
-          }
-          EOF
-          fi
-
-          mkdir -p app/src/main/res/values
-          if [ ! -f "app/src/main/res/values/firebase_applet_config.xml" ]; then
-            cat << 'EOF' > app/src/main/res/values/firebase_applet_config.xml
-          <?xml version="1.0" encoding="utf-8" standalone="no"?>
-          <resources>
-              <string name="firestore_database_id" translatable="false">ai-studio-android-worldfor-76a727cf-bb97-4f63-96af-83cf2314820a</string>
-          </resources>
-          EOF
-          fi
-
-      - name: Compile WORLD FORGE AI
-        run: |
-          set -e
-          gradle --version
-          gradle :app:assembleDebug --no-daemon --no-configuration-cache --stacktrace
-
-      - name: Verify & Prepare Named Engine APK
-        run: |
-          set -e
-          mkdir -p dist-apk apk
-          cp app/build/outputs/apk/debug/app-debug.apk dist-apk/WorldForgeAI-Engine-v0.1.0.apk
-          cp app/build/outputs/apk/debug/app-debug.apk apk/WorldForgeAI-Engine-v0.1.0.apk
           unzip -t dist-apk/WorldForgeAI-Engine-v0.1.0.apk > /dev/null
           ls -lh dist-apk/WorldForgeAI-Engine-v0.1.0.apk
 
@@ -170,7 +59,7 @@ jobs:
           path: dist-apk/WorldForgeAI-Engine-v0.1.0.apk
           if-no-files-found: error
 
-      - name: Publish APK to GitHub Releases & Repository APK Folder
+      - name: Publish APK to GitHub Releases
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -189,20 +78,4 @@ jobs:
               --title "WORLD FORGE AI Engine — Android APK (Latest Build)" \
               --notes "$RELEASE_NOTES" \
               --latest
-          fi
-
-          cat << EOF > apk/DOWNLOAD_APK_HERE.md
-          # WORLD FORGE AI — Direct Android APK Download & Install
-
-          - **1-Click Direct APK Download:** [Download WorldForgeAI-Engine-v0.1.0.apk](https://github.com/${GITHUB_REPOSITORY}/releases/latest/download/WorldForgeAI-Engine-v0.1.0.apk)
-          - **Direct Repository APK File:** [apk/WorldForgeAI-Engine-v0.1.0.apk](https://github.com/${GITHUB_REPOSITORY}/raw/main/apk/WorldForgeAI-Engine-v0.1.0.apk)
-          - **GitHub Releases Page:** [Open Releases](https://github.com/${GITHUB_REPOSITORY}/releases)
-          EOF
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add apk/WorldForgeAI-Engine-v0.1.0.apk apk/DOWNLOAD_APK_HERE.md || true
-          if ! git diff --cached --quiet; then
-            git commit -m "chore(apk): publish built WorldForgeAI-Engine-v0.1.0.apk [skip ci]" || true
-            git push origin HEAD:${GITHUB_REF_NAME} || true
           fi

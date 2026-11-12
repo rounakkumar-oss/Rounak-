@@ -1,26 +1,16 @@
-# WORLD FORGE AI — Open World Game Development Engine (Android APK)
+# WORLD FORGE AI — Engine & Android `.APK` Download
 
-**WORLD FORGE AI** is a professional AI-Powered Open World Game Development Platform built for Android and Desktop workflows.
+## Direct Android `.APK` Download & Install (`WorldForgeAI-Engine-v0.1.0.apk`)
 
----
-
-## Direct Android `.APK` Download & Install
-
-1. **Inside the App (1-Tap APK Download & Install Page):**
-   - Open the **`APK Download & Install`** tab from the Main Navigation or Dashboard.
-   - Tap **`1-Tap Download APK to Phone`** to immediately save `WorldForgeAI-Engine-v0.1.0.apk` to your phone's `Downloads` folder, then tap **`Install / Save APK`**.
-
-2. **From GitHub Releases:**
-   - Go to the **[Releases](../../releases)** section of this repository.
-   - Download **`WorldForgeAI-Engine-v0.1.0.apk`** under **Assets** and tap it on your Android phone to install.
-
-3. **From GitHub Actions:**
-   - Open the **[Actions](../../actions)** tab -> click the latest **`Build & Release WORLD FORGE AI Android APK`** workflow run -> download the **`WorldForgeAI-Engine-APK`** artifact.
+1. **[1-CLICK DOWNLOAD APK (Direct from Repository `apk/` Folder)](https://github.com/rounakkumar-oss/Rounak-/raw/main/apk/WorldForgeAI-Engine-v0.1.0.apk)**
+2. **[DOWNLOAD APK FROM GITHUB RELEASES (`v0.1.0-latest`)](https://github.com/rounakkumar-oss/Rounak-/releases/latest/download/WorldForgeAI-Engine-v0.1.0.apk)**
+3. **[Open `apk/` Folder in Repository](https://github.com/rounakkumar-oss/Rounak-/tree/main/apk)**
+4. **[Open GitHub Releases Page](https://github.com/rounakkumar-oss/Rounak-/releases)**
+5. **[Open GitHub Actions APK Builds](https://github.com/rounakkumar-oss/Rounak-/actions)**
 
 ---
 
-## Engine Architecture (Step 01 Foundation)
-- **`components/` & `pages/`**: Dark professional engine studio UI, Project Inspector, and dedicated **`APK Download & Install`** page.
-- **`projectmanager/` & `storage/`**: Real-time persistent project CRUD (`Create`, `Open`, `Rename`, `Delete`) backed by Cloud Firestore Enterprise.
-- **`services/GitHubExportService.kt`**: Direct 1-click `.APK` extractor (`MediaStore.Downloads` + SAF), `.ZIP` repository bundler, and GitHub REST API Release `.APK` uploader.
-- **`engine/`**: Modular subsystem registry for Three.js/WebGL2 viewport, AI Open World Generator, 3D World Scanner, Physics, Visual Scripting, and Android APK/AAB Exporter.
+### How to Install on Your Android Phone:
+1. Tap **[1-CLICK DOWNLOAD APK](https://github.com/rounakkumar-oss/Rounak-/raw/main/apk/WorldForgeAI-Engine-v0.1.0.apk)** above.
+2. Open **`WorldForgeAI-Engine-v0.1.0.apk`** from your phone's notification bar or **`Downloads`** folder.
+3. Tap **Install** (or **Update**) when prompted by Android Package Installer.

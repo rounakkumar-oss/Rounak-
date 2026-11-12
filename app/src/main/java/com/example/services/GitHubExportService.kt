@@ -446,13 +446,10 @@ object GitHubExportService {
             jobs:
               build-android-apk:
                 name: Compile WORLD FORGE AI Engine APK ($projectName)
-                if: "!contains(github.event.head_commit.message, '[skip ci]')"
                 runs-on: ubuntu-latest
                 steps:
                   - name: Checkout Repository
                     uses: actions/checkout@v4
-                    with:
-                      fetch-depth: 0
 
                   - name: Set up JDK 21 (Temurin)
                     if: hashFiles('settings.gradle.kts') != ''

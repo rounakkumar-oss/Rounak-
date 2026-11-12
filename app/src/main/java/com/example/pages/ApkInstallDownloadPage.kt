@@ -674,7 +674,7 @@ fun ApkInstallDownloadPage(
                                 onClick = {
                                     GitHubExportService.openBrowserUrl(
                                         context,
-                                        "https://github.com/$activeOwner/$activeRepo/releases/latest/download/$apkFileName"
+                                        "https://github.com/$activeOwner/$activeRepo/raw/main/apk/$apkFileName"
                                     )
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = ForgeSuccessGreen),
@@ -687,7 +687,7 @@ fun ApkInstallDownloadPage(
                                     modifier = Modifier.size(16.dp)
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("Download APK from GitHub", color = Color.White, fontWeight = FontWeight.Bold)
+                                Text("Download APK from GitHub (apk/ folder)", color = Color.White, fontWeight = FontWeight.Bold)
                             }
 
                             OutlinedButton(
